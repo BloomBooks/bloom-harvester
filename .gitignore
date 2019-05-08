@@ -1,0 +1,14 @@
+src/Bloom.suo
+*.user
+*.orig
+output/
+bin/
+obj/
+.vs/
+
+*.bak
+*.vsp
+packages/*.*
+packages/
+*.suo
+*.psess
