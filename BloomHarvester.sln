@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.28010.2036
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BloomHarvester", "src\\BloomHarvester.csproj", "{D736B181-F56B-4F6E-A62F-3305ADACBB4D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BloomHarvester", "src\BloomHarvester.csproj", "{D736B181-F56B-4F6E-A62F-3305ADACBB4D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -7,47 +7,79 @@ using CommandLine;
 
 namespace BloomHarvester
 {
-    // This class should just get the command line arguments parsed, pass it off to Harvester, then get out of the way as much as possible.
-    class Program
-    {
-        public static void Main(string[] args)
-        {
-            // See https://github.com/commandlineparser/commandline for documenation about CommandLine.Parser
-            var parsedArgs = CommandLine.Parser.Default.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
-                .WithParsed<HarvestAllOptions>(options =>
-                {
-                    Harvester.RunHarvestAll(options);
-                })
-                .WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
-                .WithParsed<HarvestLowPriorityOptions>(options => { throw new NotImplementedException("HarvestLowPrioirity"); })
-                .WithNotParsed(errors =>
-                {
-                    // Not implemented yet.
-                    Console.Out.WriteLine("Error parsing command line arguments.");
-                });
-        }
-    }
+	// This class should just get the command line arguments parsed, pass it off to Harvester, then get out of the way as much as possible.
+	class Program
+	{
+		// Command line arguments sample: "harvestAll --environment=dev --parseDBEnvironment=prod"
+		public static void Main(string[] args)
+		{
+			// See https://github.com/commandlineparser/commandline for documentation about CommandLine.Parser
 
-    [Verb("harvestAll", HelpText = "Run Harvester on all books.")]
-    public class HarvestAllOptions
-    {
-        [Option("debug", Required = false, Default = true, HelpText = "Set parameters to debug/develop instances of Parse, AzureMonitor, etc.")]
-        public bool IsDebug { get; set; }
-        [Option("release", Required = false, Default = false, HelpText = "Set parameters to release instances of Parse, AzureMonitor, etc.")]
-        public bool IsRelease { get; set; }
-    }
+			var parser = new CommandLine.Parser((settings) =>
+			{
+				settings.CaseInsensitiveEnumValues = true;
+				settings.CaseSensitive = false;
+				settings.HelpWriter = Console.Error;
+			});
 
-    [Verb("harvestHighPriority", HelpText = "Run Harvester on high-priority items.")]
-    public class HarvestHighPriorityOptions
-    {
-        [Option('d', "debug", Required = false, Default = true, HelpText = "Set parameters to debug/develop instances of Parse, AzureMonitor, etc.")]
-        public bool IsDebug { get; set; }
-    }
+			parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
+				.WithParsed<HarvestAllOptions>(options =>
+				{
+					Harvester.RunHarvestAll(options);
+				})
+				// TODO: Replace placeholders
+				.WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
+				.WithParsed<HarvestLowPriorityOptions>(options => { throw new NotImplementedException("HarvestLowPriority"); })
+				.WithNotParsed(errors =>
+				{
+					Console.Out.WriteLine("Error parsing command line arguments.");
+					Environment.Exit(1);
+				});
+		}
+	}
 
-    [Verb("harvestLowPriority", HelpText = "Run Harvester on low-priority items.")]
-    public class HarvestLowPriorityOptions
-    {
-        [Option('d', "debug", Required = false, Default = true, HelpText = "Set parameters to debug/develop instances of Parse, AzureMonitor, etc.")]
-        public bool IsDebug { get; set; }
-    }
+	public abstract class HarvesterCommonOptions
+	{
+		[Option('e', "environment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets all environments to read/write from. Valid values are Default, Dev, or Prod. If any individual component's envioronment are set to non-default, that value will take precedence over this.")]
+		public EnvironmentSetting Environment { get; set; }
+
+		[Option("parseDBEnvironment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets the environment to read/write from Parse DB. Valid values are Default, Dev, or Prod. If specified, takes precedence over the general 'environment' option.")]
+		public EnvironmentSetting ParseDBEnvironment { get; set; }
+
+		[Option("logEnvironment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets the environment to read/write from the logging resource. Valid values are Default, Dev, or Prod. If specified, takes precedence over the general 'environment' option.")]
+		public EnvironmentSetting LogEnvironment { get; set; }
+
+		public virtual string GetPrettyPrint()
+		{
+			return $"environment: {Environment}\n" +
+				$"parseDBEnvironment: {ParseDBEnvironment}\n" +
+				$"logEnvironment: {LogEnvironment}";
+		}
+	}
+
+	[Verb("harvestAll", HelpText = "Run Harvester on all books.")]
+	public class HarvestAllOptions  : HarvesterCommonOptions
+	{
+		// TODO: Remove placeholder
+		[Option("HarvestAllPlaceholder", Required = false)]
+		public string HarvestAllPlaceholder { get; set; }
+
+		public override string GetPrettyPrint()
+		{
+			return base.GetPrettyPrint() + "\n" +
+				$"HarvestAllPlaceholder: {HarvestAllPlaceholder}";
+		}
+	}
+
+	[Verb("harvestHighPriority", HelpText = "Run Harvester on high-priority items.")]
+	public class HarvestHighPriorityOptions : HarvesterCommonOptions
+	{
+		// PLACEHOLDER
+	}
+
+	[Verb("harvestLowPriority", HelpText = "Run Harvester on low-priority items.")]
+	public class HarvestLowPriorityOptions : HarvesterCommonOptions
+	{
+		// PLACEHOLDER
+	}
 }

@@ -7,56 +7,60 @@ using BloomHarvester.Logger;
 
 namespace BloomHarvester
 {
-    // This class is responsible for coordinating the running of the application logic
-    public class Harvester : IDisposable
-    {
-        protected IMonitorLogger logger;
-        private ParseClient parseClient;
+	// This class is responsible for coordinating the running of the application logic
+	public class Harvester : IDisposable
+	{
+		protected IMonitorLogger _logger;
+		private ParseClient _parseClient;
 
-        public bool IsDebug { get; set; }
+		public bool IsDebug { get; set; }
 
-        public Harvester(bool isDebug)
-        {
-            this.IsDebug = isDebug;
-            this.logger = new AzureMonitorLogger(isDebug);
-            parseClient = new ParseClient(isDebug);
-            parseClient.Logger = this.logger;
-        }
+		public Harvester(HarvestAllOptions options)
+		{
+			EnvironmentSetting azureMonitorEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
+			_logger = new AzureMonitorLogger(azureMonitorEnvironment);
 
-        public void Dispose()
-        {
-            logger.Dispose();
-        }
+			EnvironmentSetting parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
+			_parseClient = new ParseClient(parseDBEnvironment);
+			_parseClient.Logger = _logger;
+		}
 
-        public static void RunHarvestAll(HarvestAllOptions options)
-        {
-            using (Harvester harvester = new Harvester(options.IsDebug))
-            {
-                harvester.HarvestAll();
-            }
-        }
+		public void Dispose()
+		{
+			_logger.Dispose();
+		}
 
-        // Public interface should use RunHarvestAll() function instead. (So that we can guarantee that the class instance is properly disposed).
-        private void HarvestAll()
-        {
-            logger.TrackEvent("HarvestAll Start");
-            IEnumerable<string> bookList = parseClient.GetBookUrlList();
-            foreach (string bookBaseUrl in bookList)
-            {
-                ProcessOneBook(bookBaseUrl);
-            }
+		public static void RunHarvestAll(HarvestAllOptions options)
+		{
+			Console.Out.WriteLine("Command Line Options: \n" + options.GetPrettyPrint());
 
-            logger.TrackEvent("HarvestAll End - Success");
-        }
+			using (Harvester harvester = new Harvester(options))
+			{
+				harvester.HarvestAll();
+			}
+		}
 
-        private void ProcessOneBook(string bookBaseUrl)
-        {
-            logger.TrackEvent("ProcessOneBook Start");
-            string message = $"Processing: {bookBaseUrl}";
-            Console.Out.WriteLine(message);
-            logger.LogVerbose(message);
+		// Public interface should use RunHarvestAll() function instead. (So that we can guarantee that the class instance is properly disposed).
+		private void HarvestAll()
+		{
+			_logger.TrackEvent("HarvestAll Start");
+			IEnumerable<string> bookList = _parseClient.GetBookUrlList();
+			foreach (string bookBaseUrl in bookList)
+			{
+				ProcessOneBook(bookBaseUrl);
+			}
 
-            logger.TrackEvent("ProcessOneBook End - Success");
-        }
-    }
+			_logger.TrackEvent("HarvestAll End - Success");
+		}
+
+		private void ProcessOneBook(string bookBaseUrl)
+		{
+			_logger.TrackEvent("ProcessOneBook Start");
+			string message = $"Processing: {bookBaseUrl}";
+			Console.Out.WriteLine(message);
+			_logger.LogVerbose(message);
+
+			_logger.TrackEvent("ProcessOneBook End - Success");
+		}
+	}
 }

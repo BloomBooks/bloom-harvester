@@ -2,7 +2,7 @@
   "profiles": {
     "BloomHarvester": {
       "commandName": "Project",
-      "commandLineArgs": "harvestAll debug"
+      "commandLineArgs": "harvestAll --environment=dev --parseDBEnvironment=prod"
     }
   }
 }
