@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using BloomHarvester.Logger;
+using BloomHarvester.WebLibraryIntegration;
 
 namespace BloomHarvester
 {
@@ -17,8 +18,15 @@ namespace BloomHarvester
 
 		public Harvester(HarvestAllOptions options)
 		{
-			EnvironmentSetting azureMonitorEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
-			_logger = new AzureMonitorLogger(azureMonitorEnvironment);
+			if (options.SuppressLogs)
+			{
+				_logger = new ConsoleLogger();
+			}
+			else
+			{
+				EnvironmentSetting azureMonitorEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
+				_logger = new AzureMonitorLogger(azureMonitorEnvironment);
+			}
 
 			EnvironmentSetting parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
 			_parseClient = new ParseClient(parseDBEnvironment);
@@ -53,7 +61,7 @@ namespace BloomHarvester
 				ProcessOneBook(bookBaseUrl);
 				++numBooksProcessed;
 
-				if (numBooksProcessed >= maxBooksToProcess)
+				if (maxBooksToProcess > 0 && numBooksProcessed >= maxBooksToProcess)
 				{
 					break;
 				}
@@ -64,12 +72,20 @@ namespace BloomHarvester
 
 		private void ProcessOneBook(string bookBaseUrl)
 		{
-			_logger.TrackEvent("ProcessOneBook Start");
-			string message = $"Processing: {bookBaseUrl}";
-			Console.Out.WriteLine(message);
-			_logger.LogVerbose(message);
+			try
+			{
+				_logger.TrackEvent("ProcessOneBook Start");
+				string message = $"Processing: {bookBaseUrl}";
+				Console.Out.WriteLine(message);
+				_logger.LogVerbose(message);
 
-			_logger.TrackEvent("ProcessOneBook End - Success");
+				_logger.TrackEvent("ProcessOneBook End - Success");
+			}
+			catch (Exception e)
+			{
+				YouTrackIssueConnector.SubmitToYouTrack(e, $"Unhandled exception thrown while processing book \"{bookBaseUrl}\"");
+				throw;
+			}
 		}
 	}
 }

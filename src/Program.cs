@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using BloomHarvester.WebLibraryIntegration;
 using CommandLine;
 
 namespace BloomHarvester
@@ -22,19 +23,28 @@ namespace BloomHarvester
 				settings.HelpWriter = Console.Error;
 			});
 
-			parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
-				.WithParsed<HarvestAllOptions>(options =>
-				{
-					Harvester.RunHarvestAll(options);
-				})
-				// TODO: Replace placeholders
-				.WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
-				.WithParsed<HarvestLowPriorityOptions>(options => { throw new NotImplementedException("HarvestLowPriority"); })
-				.WithNotParsed(errors =>
-				{
-					Console.Out.WriteLine("Error parsing command line arguments.");
-					Environment.Exit(1);
-				});
+
+			try
+			{
+				parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
+					.WithParsed<HarvestAllOptions>(options =>
+					{
+						Harvester.RunHarvestAll(options);
+					})
+					// TODO: Replace placeholders
+					.WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
+					.WithParsed<HarvestLowPriorityOptions>(options => { throw new NotImplementedException("HarvestLowPriority"); })
+					.WithNotParsed(errors =>
+					{
+						Console.Out.WriteLine("Error parsing command line arguments.");
+						Environment.Exit(1);
+					});
+			}
+			catch (Exception e)
+			{
+				YouTrackIssueConnector.SubmitToYouTrack(e, "An exception was thrown which was not handled by the program.");
+				throw;
+			}
 		}
 	}
 
@@ -49,11 +59,15 @@ namespace BloomHarvester
 		[Option("logEnvironment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets the environment to read/write from the logging resource. Valid values are Default, Dev, Test, or Prod. If specified (to non-Default), takes precedence over the general 'environment' option.")]
 		public EnvironmentSetting LogEnvironment { get; set; }
 
+		[Option("suppressLogs", Required = false, Default = false, HelpText = "If true, will prevent log messages from being logged to the log environment (which may incur fees). Will write those logs to Standard Error instead.")]
+		public bool SuppressLogs { get; set; }
+
 		public virtual string GetPrettyPrint()
 		{
 			return $"environment: {Environment}\n" +
 				$"parseDBEnvironment: {ParseDBEnvironment}\n" +
-				$"logEnvironment: {LogEnvironment}";
+				$"logEnvironment: {LogEnvironment}\n" +
+				$"suppressLogs: {SuppressLogs}";
 		}
 	}
 

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using RestSharp;
 
-namespace BloomHarvester
+namespace BloomHarvester.WebLibraryIntegration
 {
 	// Enhance: In the future, may be worth it to subclass the BloomDesktop one and take a dependency on it.
 	// We could get the URLs and ApplicationID from the BlookDesktop base class. We would add our new Harvester-specific functions in our derived class.
