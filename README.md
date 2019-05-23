@@ -3,7 +3,8 @@
 ## Basic Idea
 This will be a process that can download books stored in Bloom Library and then upload products based on them so that they are available to users.
 ## Development
-Just open BloomHarvester.sln in Visual Studio
+Open a command window. Navigate to the build folder under the root. Run getDepencies-windows.sh. This will download some dependencies to lib/dotnet/&ast;.dll.
+Then open BloomHarvester.sln in Visual Studio
 If you want to view the logs or status in Azure Portal, you will obviously also need access to the specified resources.
 ## Setting Environment variables for runtime
 * You will need to set some or all of the following Environment variables to store some keys:
