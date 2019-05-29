@@ -2,14 +2,14 @@
 using System.Collections.Generic;
 using System.Text;
 using BloomHarvester.Parse.Model;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NUnit.Framework;
 
 namespace BloomHarvesterTests.Parse.Model
 {
-	[TestClass]
+	[TestFixture]
 	public class PublishedBookTests
 	{
-		[TestMethod]
+		[Test]
 		public void GetJson_NullBook_NoException()
 		{
 			var obj = new PublishedBook();
@@ -20,7 +20,7 @@ namespace BloomHarvesterTests.Parse.Model
 			Assert.AreEqual(expectedJson, json);
 		}
 
-		[TestMethod]
+		[Test]
 		public void GetJson_BookButNoWarnings_CorrectJson()
 		{
 			var obj = new PublishedBook();
@@ -36,7 +36,7 @@ namespace BloomHarvesterTests.Parse.Model
 			Assert.AreEqual(expectedJson, json);
 		}
 
-		[TestMethod]
+		[Test]
 		public void GetJson_BookAndWarnings_CorrectJson()
 		{
 			var obj = new PublishedBook();

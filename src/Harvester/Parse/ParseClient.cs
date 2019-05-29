@@ -6,9 +6,10 @@ using System.Net;
 using System.Text;
 using BloomHarvester.Parse.Model;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using RestSharp;
 
-namespace BloomHarvester.WebLibraryIntegration
+namespace BloomHarvester.Parse
 {
 	// Enhance: In the future, may be worth it to subclass the BloomDesktop one and take a dependency on it.
 	// We could get the URLs and ApplicationID from the BlookDesktop base class. We would add our new Harvester-specific functions in our derived class.
@@ -60,7 +61,10 @@ namespace BloomHarvester.WebLibraryIntegration
 		// Fields and properties
 		private RestClient _client;
 		private string _applicationId;
-		private string _sessionToken;	// Used to keep track of authentication
+		private string _sessionToken;   // Used to keep track of authentication
+
+		private const int kMaxBatchOpsToSend = 50;
+		private List<BatchableOperation> _batchableOperations = new List<BatchableOperation>(kMaxBatchOpsToSend);
 
 		// Careful! Very well might be null
 		internal Logger.IMonitorLogger Logger { get; set; }
@@ -116,8 +120,14 @@ namespace BloomHarvester.WebLibraryIntegration
 			}
 		}
 
+		private void AddJsonToRequest(RestRequest request, string json)
+		{
+			request.AddParameter("application/json", json, ParameterType.RequestBody);
+		}
+
 		/// <summary>
 		/// Creates an object in a Parse class (table)
+		/// This method may take about half a second to complete.
 		/// </summary>
 		/// <param name="className">The name of the class (table). Do not prefix it with "classes/"</param>
 		/// <param name="json">The JSON of the object to write</param>
@@ -127,7 +137,7 @@ namespace BloomHarvester.WebLibraryIntegration
 		{
 			EnsureLogIn();
 			var request = MakeRequest($"classes/{className}", Method.POST);
-			request.AddParameter("application/json", json, ParameterType.RequestBody);
+			AddJsonToRequest(request, json);
 
 			var response = _client.Execute(request);
 			CheckForResponseError(response, "Create failed.\nRequest.Json: {0}", json);
@@ -137,6 +147,7 @@ namespace BloomHarvester.WebLibraryIntegration
 
 		/// <summary>
 		/// Updates an object in a Parse class (table)
+		/// This method may take about half a second to complete.
 		/// </summary>
 		/// <param name="className">The name of the class (table). Do not prefix it with "classes/"</param>
 		/// <param name="json">The JSON of the object to update. It doesn't need to be the full object, just of the fields to update</param>
@@ -146,7 +157,7 @@ namespace BloomHarvester.WebLibraryIntegration
 		{
 			EnsureLogIn();
 			var request = MakeRequest($"classes/{className}", Method.PUT);
-			request.AddParameter("application/json", updateJson, ParameterType.RequestBody);
+			AddJsonToRequest(request, updateJson);
 
 			var response = _client.Execute(request);
 			CheckForResponseError(response, "Update failed.\nRequest.Json: {0}", updateJson);
@@ -156,6 +167,7 @@ namespace BloomHarvester.WebLibraryIntegration
 
 		/// <summary>
 		/// Deletes an object in a Parse class (table)
+		/// This method may take about half a second to complete.
 		/// </summary>
 		/// <param name="className">The name of the class (table). Do not prefix it with "classes/"</param>
 		/// <param name="objectId">The objectId of the object to delte</param>
@@ -186,6 +198,109 @@ namespace BloomHarvester.WebLibraryIntegration
 				message.AppendLine("Response.Content: " + response.Content);
 				throw new ApplicationException(message.ToString());
 			}
+		}
+
+		/// <summary>
+		/// Schedules an object to be added the next time a batch of operations is sent.
+		/// Remember to call FlushBatchableOperations at the end.
+		/// A batch will also be sent automatically when the batch queue is full.
+		/// </summary>
+		/// <param name="className">The class to add to</param>
+		/// <param name="objectId">The JSON of the object to create</param>
+		internal void RequestCreateObject(string className, string json)
+		{
+			var requestedOperation = new BatchableOperation(RestSharp.Method.POST, $"classes/{className}", json);
+			AddBatchableOperation(requestedOperation);
+		}
+
+		/// <summary>
+		/// Schedules an object to be deleted the next time a batch of operations is sent.
+		/// Remember to call FlushBatchableOperations at the end.
+		/// A batch will also be sent automatically when the batch queue is full.
+		/// </summary>
+		/// <param name="className">The class to delete from</param>
+		/// <param name="objectId">The object ID to delete</param>
+		internal void RequestDeleteObject(string className, string objectId)
+		{
+			var requestedOperation = new BatchableOperation(RestSharp.Method.DELETE, $"classes/{className}/{objectId}", "{}");
+			AddBatchableOperation(requestedOperation);
+		}
+
+		private void AddBatchableOperation(BatchableOperation requestedOperation)
+		{
+			// Note: it can take 0.5 seconds for each single Delete or Create operation,
+			// so try to batch them up so it doesn't take as long
+			//
+			// One at a time, it took 493.84 seconds to process 439 records.
+			// In batch, it took 101.93 seconds to process the same 439 records.
+			// That's 493.84 / 101.93 = 4.8x speedup
+
+			_batchableOperations.Add(requestedOperation);
+			if (_batchableOperations.Count >= 50)
+			{
+				FlushBatchableOperations();
+			}
+		}
+
+		internal void FlushBatchableOperations()
+		{
+			if (_batchableOperations?.Count > 0)
+			{
+				Console.Out.WriteLine($"Flushing {_batchableOperations.Count} operations to Parse.");
+
+				int numProcessed = 0;
+				do
+				{
+					// Parse can only do 50 at a time.
+					// Get the JSON for the first 50 to send.
+					var opsToSend = _batchableOperations.Skip(numProcessed).Take(kMaxBatchOpsToSend);
+					string batchJson = GetBatchJson(opsToSend);
+
+					// Prepare request
+					EnsureLogIn();
+					var request = MakeRequest("batch", Method.POST);
+					AddJsonToRequest(request, batchJson);
+
+					// SEnd the request
+					Logger?.TrackEvent("ParseClient::FlushBatchableOperations Batch Request Sent");
+					var response = _client.Execute(request);
+
+					// Check for a complete request error
+					CheckForResponseError(response, "FlushBatchableOperations failed. JSON={0}", batchJson);
+
+					// Check if some (or all) of the batch operations errored out
+					string responseJson = response.Content;
+					JArray responseObjArray = JArray.Parse(responseJson);
+					if (responseObjArray.Any())
+					{
+						for (int i = 0; i < responseObjArray.Count; ++i)
+						{
+							JToken responseToken = responseObjArray[i];
+							var errorToken = responseToken.SelectToken("error");
+							if (errorToken != null)
+							{
+								int errorCode = errorToken.Value<int>("code");
+								string errorMessage = errorToken.Value<string>("error");
+
+								throw new ApplicationException($"Operation at index {i} returned error code {errorCode}: {errorMessage}");
+							}
+						}
+					}
+
+					// At this point, we know no errors.
+					numProcessed += opsToSend.Count();
+				} while (numProcessed < _batchableOperations.Count);
+
+				_batchableOperations.Clear();
+			}
+		}
+
+		internal static string GetBatchJson(IEnumerable<BatchableOperation> batchOps)
+		{
+			var batchOpsJsons = batchOps.Select(op => op.GetJson());
+			string requestsValueJson = String.Join(",", batchOpsJsons);
+			string batchJson = "{\"requests\": [" + requestsValueJson + "] }";
+			return batchJson;
 		}
 
 		/// <summary>
@@ -234,7 +349,7 @@ namespace BloomHarvester.WebLibraryIntegration
 				var restResponse = _client.Execute(request);
 				string responseJson = restResponse.Content;
 
-				var response = JsonConvert.DeserializeObject<Parse.RestResponse<T>>(responseJson);
+				var response = JsonConvert.DeserializeObject<Parse.HarvesterRestResponse<T>>(responseJson);
 				totalCount = response.Count;
 
 				var currentResultCount = response.Results.Length;
@@ -273,7 +388,7 @@ namespace BloomHarvester.WebLibraryIntegration
 			var restResponse = _client.Execute(request);
 			string responseJson = restResponse.Content;
 
-			var response = JsonConvert.DeserializeObject<Parse.RestResponse<PublishedBook>>(responseJson);
+			var response = JsonConvert.DeserializeObject<Parse.HarvesterRestResponse<PublishedBook>>(responseJson);
 
 			if (response.Results.Length <= 0)
 			{

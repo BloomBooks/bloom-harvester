@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using BloomHarvester.Logger;
+using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 
@@ -63,6 +65,8 @@ namespace BloomHarvester
 		private void HarvestAll(int maxBooksToProcess = -1)
 		{
 			_logger.TrackEvent("HarvestAll Start");
+			var methodStopwatch = new Stopwatch();
+			methodStopwatch.Start();
 
 			int numBooksProcessed = 0;
 
@@ -77,6 +81,10 @@ namespace BloomHarvester
 					break;
 				}
 			}
+
+			_parseClient.FlushBatchableOperations();
+			methodStopwatch.Stop();
+			Console.Out.WriteLine($"HarvestAll took {methodStopwatch.ElapsedMilliseconds / 1000.0} seconds.");
 
 			_logger.TrackEvent("HarvestAll End - Success");
 		}
@@ -106,7 +114,9 @@ namespace BloomHarvester
 					//   * Created Time is less informative
 
 					// We're going to overwrite any existing entries, so delete it if necessary
-					_parseClient.DeleteObject("publishedBooks", pBookId);
+
+					// ENHANCE: Maybe we should delete all rows that match the book? Even though it's not SUPPOSED to happen, the table could get messed up.
+					_parseClient.RequestDeleteObject("publishedBooks", pBookId);
 				}
 
 				PublishedBook publishedBook = new PublishedBook()
@@ -116,7 +126,7 @@ namespace BloomHarvester
 				};
 
 				string json = publishedBook.GetJson();
-				_parseClient.CreateObject("publishedBooks", json);
+				_parseClient.RequestCreateObject("publishedBooks", json);
 
 				_logger.TrackEvent("ProcessOneBook End - Success");
 			}
