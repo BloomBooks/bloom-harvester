@@ -6,7 +6,7 @@ using System.Text;
 namespace BloomHarvester.Parse
 {
 	[JsonObject]
-	class RestResponse<T>
+	class HarvesterRestResponse<T>
 	{
 		[JsonProperty("count")]
 		internal int Count;
