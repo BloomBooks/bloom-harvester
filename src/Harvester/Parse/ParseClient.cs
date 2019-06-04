@@ -15,56 +15,73 @@ namespace BloomHarvester.Parse
 	// We could get the URLs and ApplicationID from the BlookDesktop base class. We would add our new Harvester-specific functions in our derived class.
 	//
 	// Right now, there's not enough common functionality to make it worthwhile. Maybe revisit this topic when the code becomes more stable.
-	internal class ParseClient
+	internal class ParseClient : Bloom.WebLibraryIntegration.BloomParseClient
 	{
 		// Constructors
 		internal ParseClient(EnvironmentSetting environment)
+			:base(CreateRestClient(environment))
 		{
 			_environmentSetting = environment;
+			this.ApplicationId = GetApplicationId(environment);
+			Debug.Assert(!String.IsNullOrWhiteSpace(ApplicationId), "Parse Application ID is invalid. Retrieving books from Parse probably won't work. Consider checking your environment variables.");
+		}
 
+		private static RestClient CreateRestClient(EnvironmentSetting environment)
+		{
 			string url;
-			string environmentVariableName;
-
 			switch (environment)
 			{
 				case EnvironmentSetting.Prod:
 					url = "https://parse.bloomlibrary.org/";
-					environmentVariableName = "BloomHarvesterParseAppIdProd";
 					break;
 				case EnvironmentSetting.Test:
 					url = "https://bloom-parse-server-unittest.azurewebsites.net/parse";
-					environmentVariableName = "BloomHarvesterParseAppIdTest";
 					break;
 				case EnvironmentSetting.Dev:
 				default:
 					//url = "https://dev-parse.bloomlibrary.org/";	// Theoretically, this link should work too and is preferred, but it doesn't work in the program for some reason even though it redirects correctly in the browser.
 					url = "https://bloom-parse-server-develop.azurewebsites.net/parse";
-					environmentVariableName = "BloomHarvesterParseAppIdDev";
 					break;
 				case EnvironmentSetting.Local:
 					url = "http://localhost:1337/parse";
-					environmentVariableName = null;
 					break;
 			}
 
-			_client = new RestClient(url);
+			return new RestClient(url);
+		}
 
+		private static string GetApplicationId(EnvironmentSetting environment)
+		{
+			string appIdEnvVarKey;
+
+			switch (environment)
+			{
+				case EnvironmentSetting.Prod:
+					appIdEnvVarKey = "BloomHarvesterParseAppIdProd";
+					break;
+				case EnvironmentSetting.Test:
+					appIdEnvVarKey = "BloomHarvesterParseAppIdTest";
+					break;
+				case EnvironmentSetting.Dev:
+				default:
+					appIdEnvVarKey = "BloomHarvesterParseAppIdDev";
+					break;
+				case EnvironmentSetting.Local:
+					appIdEnvVarKey = null;
+					break;
+			}
+
+			string applicationId = "myAppId";
 			if (environment != EnvironmentSetting.Local)
 			{
-				_applicationId = Environment.GetEnvironmentVariable(environmentVariableName);
+				applicationId = Environment.GetEnvironmentVariable(appIdEnvVarKey);
 			}
-			else
-			{
-				_applicationId = "myAppId";
-			}
-			Debug.Assert(!String.IsNullOrWhiteSpace(_applicationId), "Parse Application ID is invalid. Retrieving books from Parse probably won't work. Consider checking your environment variables.");
+
+			return applicationId;
 		}
 
 		// Fields and properties
 		private EnvironmentSetting _environmentSetting;
-		private RestClient _client;
-		private string _applicationId;
-		private string _sessionToken;   // Used to keep track of authentication
 
 		private const int kMaxBatchOpsToSend = 50;
 		private List<BatchableOperation> _batchableOperations = new List<BatchableOperation>(kMaxBatchOpsToSend);
@@ -102,7 +119,7 @@ namespace BloomHarvester.Parse
 			request.AddParameter("username", Environment.GetEnvironmentVariable($"BloomHarvesterUserName").ToLowerInvariant());
 			request.AddParameter("password", Environment.GetEnvironmentVariable($"BloomHarvesterUserPassword{_environmentSetting}"));
 
-			var response = _client.Execute(request);
+			var response = this.Client.Execute(request);
 			CheckForResponseError(response, "Failed to log in");
 
 			var dy = JsonConvert.DeserializeObject<dynamic>(response.Content);
@@ -124,7 +141,7 @@ namespace BloomHarvester.Parse
 
 		private void SetCommonHeaders(RestRequest request)
 		{
-			request.AddHeader("X-Parse-Application-Id", _applicationId);
+			request.AddHeader("X-Parse-Application-Id", ApplicationId);
 			if (!string.IsNullOrEmpty(_sessionToken))
 			{
 				request.AddHeader("X-Parse-Session-Token", _sessionToken);
@@ -150,7 +167,7 @@ namespace BloomHarvester.Parse
 			var request = MakeRequest($"classes/{className}", Method.POST);
 			AddJsonToRequest(request, json);
 
-			var response = _client.Execute(request);
+			var response = this.Client.Execute(request);
 			CheckForResponseError(response, "Create failed.\nRequest.Json: {0}", json);
 
 			return response;
@@ -170,7 +187,7 @@ namespace BloomHarvester.Parse
 			var request = MakeRequest($"classes/{className}/{objectId}", Method.PUT);
 			AddJsonToRequest(request, updateJson);
 
-			var response = _client.Execute(request);
+			var response = this.Client.Execute(request);
 			CheckForResponseError(response, "Update failed.\nRequest.Json: {0}", updateJson);
 
 			return response;
@@ -189,7 +206,7 @@ namespace BloomHarvester.Parse
 			EnsureLogIn();
 			var request = MakeRequest($"classes/{className}/{objectId}", Method.DELETE);
 
-			var response = _client.Execute(request);
+			var response = this.Client.Execute(request);
 			CheckForResponseError(response, "Delete of object {0} failed.", objectId);
 
 			return response;
@@ -279,9 +296,9 @@ namespace BloomHarvester.Parse
 					var request = MakeRequest("batch", Method.POST);
 					AddJsonToRequest(request, batchJson);
 
-					// SEnd the request
+					// Send the request
 					Logger?.TrackEvent("ParseClient::FlushBatchableOperations Batch Request Sent");
-					var response = _client.Execute(request);
+					var response = this.Client.Execute(request);
 
 					// Check for a complete request error
 					CheckForResponseError(response, "FlushBatchableOperations failed. JSON={0}", batchJson);
@@ -329,7 +346,7 @@ namespace BloomHarvester.Parse
 			var request = new RestRequest("classes/books", Method.GET);
 			SetCommonHeaders(request);
 			request.AddParameter("keys", "object_id,baseUrl");
-
+			
 			if (!String.IsNullOrEmpty(whereCondition))
 			{
 				request.AddParameter("where", whereCondition);
@@ -369,10 +386,10 @@ namespace BloomHarvester.Parse
 				request.AddParameter("count", "1");
 				request.AddParameter("limit", "1000");   // The limit should probably be on the higher side. The fewer DB calls, the better, probably.
 				request.AddParameter("skip", numProcessed.ToString());
-				request.AddParameter("order", "updatedAt");
+				request.AddParameter("order", "createdAt");
 
 				Logger?.TrackEvent("ParseClient::GetAllResults Request Sent");
-				var restResponse = _client.Execute(request);
+				var restResponse = this.Client.Execute(request);
 				string responseJson = restResponse.Content;
 
 				var response = JsonConvert.DeserializeObject<Parse.ParseResponse<T>>(responseJson);

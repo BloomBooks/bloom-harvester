@@ -1,9 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Web;
+using Bloom;
+using Bloom.WebLibraryIntegration;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
@@ -16,13 +20,15 @@ namespace BloomHarvester
 	{
 		protected IMonitorLogger _logger;
 		private ParseClient _parseClient;
-		
+		private BookTransfer _transfer;
+
 		internal bool IsDebug { get; set; }
 
 		public string Identifier { get; set; }
 
 		public Harvester(HarvesterCommonOptions options)
 		{
+			// Note: If the same machine runs multiple BloomHarvester processes, then you need to add a suffix to this.
 			this.Identifier = Environment.MachineName;
 
 			if (options.SuppressLogs)
@@ -38,6 +44,10 @@ namespace BloomHarvester
 			EnvironmentSetting parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
 			_parseClient = new ParseClient(parseDBEnvironment);
 			_parseClient.Logger = _logger;
+			_transfer = new BookTransfer(_parseClient,
+				bloomS3Client: new HarvesterS3Client(BloomS3Client.SandboxBucketName),
+				htmlThumbnailer: null,
+				bookDownloadStartingEvent: new BookDownloadStartingEvent());
 		}
 
 		public void Dispose()
@@ -117,6 +127,13 @@ namespace BloomHarvester
 
 				_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, initialUpdates.ToJson());
 
+				// Download the book
+				_logger.TrackEvent("Download Book");
+				string urlWithoutTitle = GetBookIdFromBaseUrl(book.BaseUrl);
+				string downloadDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
+				_logger.LogVerbose("Download Dir: {0}", downloadDir);
+				_transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadDir);
+
 				// Process the book
 				var finalUpdates = new UpdateOperation();
 				var warnings = FindBookWarnings(book);
@@ -151,6 +168,34 @@ namespace BloomHarvester
 				}
 				throw;
 			}
+		}
+
+		// Precondition: Assumes that baseUrl is URL-encoded and ends with the book title as a subfolder.
+		public static string GetBookIdFromBaseUrl(string baseUrl)
+		{
+			if (String.IsNullOrEmpty(baseUrl))
+			{
+				return baseUrl;
+			}
+
+			string decodedUrl = HttpUtility.UrlDecode(baseUrl);
+
+			int length = decodedUrl.Length;
+			if (decodedUrl.EndsWith("/"))
+			{
+				// Don't bother processing trailing slash
+				--length;
+			}
+
+			int lastSlashIndex = decodedUrl.LastIndexOf('/', length - 1);
+
+			string urlWithoutTitle = decodedUrl;
+			if (lastSlashIndex >= 0)
+			{
+				urlWithoutTitle = decodedUrl.Substring(0, lastSlashIndex);
+			}
+
+			return urlWithoutTitle;
 		}
 
 		/// <summary>

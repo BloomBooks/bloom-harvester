@@ -18,4 +18,10 @@
     <ProjectReference Include="..\Harvester\BloomHarvester.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="Bloom">
+      <HintPath>..\..\..\BloomDesktop4.6\output\Debug\Bloom.exe</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>

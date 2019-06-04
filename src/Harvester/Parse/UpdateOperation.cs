@@ -10,6 +10,11 @@ namespace BloomHarvester.Parse
 	{
 		private Dictionary<string, string> _updatedFieldValues = new Dictionary<string, string>();
 
+		internal UpdateOperation()
+		{
+			_updatedFieldValues["updateSource"] = "\"bloomHarvester\"";
+		}
+
 		internal void Clear()
 		{
 			_updatedFieldValues.Clear();
