@@ -11,10 +11,10 @@ namespace BloomHarvesterTests
 	class HarvesterTests
 	{
 		[Test]
-		public void GetBookIdFromBaseUrl_EncodedWithTitle_DecodedWithoutTitle()
+		public void RemoveBookTitleFromBaseUrl_DecodedWithTitle_DecodedWithoutTitle()
 		{
-			string input = "https://s3.amazonaws.com/BloomLibraryBooks-Sandbox/hattonlists%40gmail.com%2f8cba3b47-2ceb-47fd-9ac7-3172824849e4%2fHow+Snakes+Came+to+Be%2f";
-			string output = Harvester.GetBookIdFromBaseUrl(input);
+			string input = "https://s3.amazonaws.com/BloomLibraryBooks-Sandbox/hattonlists@gmail.com/8cba3b47-2ceb-47fd-9ac7-3172824849e4/How+Snakes+Came+to+Be/";
+			string output = Harvester.RemoveBookTitleFromBaseUrl(input);
 			Assert.AreEqual("https://s3.amazonaws.com/BloomLibraryBooks-Sandbox/hattonlists@gmail.com/8cba3b47-2ceb-47fd-9ac7-3172824849e4", output);
 		}
 	}

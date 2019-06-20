@@ -21,6 +21,7 @@ namespace BloomHarvester
 		protected IMonitorLogger _logger;
 		private ParseClient _parseClient;
 		private BookTransfer _transfer;
+		private HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
 
 		internal bool IsDebug { get; set; }
 
@@ -44,10 +45,32 @@ namespace BloomHarvester
 			EnvironmentSetting parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
 			_parseClient = new ParseClient(parseDBEnvironment);
 			_parseClient.Logger = _logger;
+
+			string downloadBucketName;
+			string uploadBucketName;
+			switch (parseDBEnvironment)
+			{
+				case EnvironmentSetting.Prod:
+					downloadBucketName = BloomS3Client.ProductionBucketName;
+					uploadBucketName = HarvesterS3Client.HarvesterProductionBucketName;
+					break;
+				case EnvironmentSetting.Test:
+					downloadBucketName = BloomS3Client.UnitTestBucketName;
+					uploadBucketName = HarvesterS3Client.HarvesterUnitTestBucketName;
+					break;
+				case EnvironmentSetting.Dev:
+				case EnvironmentSetting.Local:
+				default:
+					downloadBucketName = BloomS3Client.SandboxBucketName;
+					uploadBucketName = HarvesterS3Client.HarvesterSandboxBucketName;
+					break;
+			}
 			_transfer = new BookTransfer(_parseClient,
-				bloomS3Client: new HarvesterS3Client(BloomS3Client.SandboxBucketName),
+				bloomS3Client: new HarvesterS3Client(downloadBucketName),
 				htmlThumbnailer: null,
 				bookDownloadStartingEvent: new BookDownloadStartingEvent());
+
+			_s3UploadClient = new HarvesterS3Client(uploadBucketName);
 		}
 
 		public void Dispose()
@@ -129,10 +152,11 @@ namespace BloomHarvester
 
 				// Download the book
 				_logger.TrackEvent("Download Book");
-				string urlWithoutTitle = GetBookIdFromBaseUrl(book.BaseUrl);
-				string downloadDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
-				_logger.LogVerbose("Download Dir: {0}", downloadDir);
-				_transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadDir);
+				string decodedUrl = HttpUtility.UrlDecode(book.BaseUrl);
+				string urlWithoutTitle = RemoveBookTitleFromBaseUrl(decodedUrl);
+				string downloadRootDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
+				_logger.LogVerbose("Download Dir: {0}", downloadRootDir);
+				string downloadBookDir = _transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
 
 				// Process the book
 				var finalUpdates = new UpdateOperation();
@@ -140,6 +164,9 @@ namespace BloomHarvester
 				finalUpdates.UpdateField(Book.kWarningsField, Book.ToJson(warnings));
 
 				// ENHANCE: Do more processing here
+				_logger.TrackEvent("Upload Book");
+
+				UploadBook(decodedUrl, downloadBookDir);
 
 				// Write the updates
 				finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
@@ -170,34 +197,32 @@ namespace BloomHarvester
 			}
 		}
 
-		// Precondition: Assumes that baseUrl is URL-encoded and ends with the book title as a subfolder.
-		public static string GetBookIdFromBaseUrl(string baseUrl)
+		// Precondition: Assumes that baseUrl is not URL-encoded, and that it ends with the book title as a subfolder.
+		public static string RemoveBookTitleFromBaseUrl(string baseUrl)
 		{
 			if (String.IsNullOrEmpty(baseUrl))
 			{
 				return baseUrl;
 			}
 
-			string decodedUrl = HttpUtility.UrlDecode(baseUrl);
-
-			int length = decodedUrl.Length;
-			if (decodedUrl.EndsWith("/"))
+			int length = baseUrl.Length;
+			if (baseUrl.EndsWith("/"))
 			{
 				// Don't bother processing trailing slash
 				--length;
 			}
 
-			int lastSlashIndex = decodedUrl.LastIndexOf('/', length - 1);
+			int lastSlashIndex = baseUrl.LastIndexOf('/', length - 1);
 
-			string urlWithoutTitle = decodedUrl;
+			string urlWithoutTitle = baseUrl;
 			if (lastSlashIndex >= 0)
 			{
-				urlWithoutTitle = decodedUrl.Substring(0, lastSlashIndex);
+				urlWithoutTitle = baseUrl.Substring(0, lastSlashIndex);
 			}
 
 			return urlWithoutTitle;
 		}
-
+				
 		/// <summary>
 		/// Determines whether any warnings regarding a book should be displayed to the user on Bloom Library
 		/// </summary>
@@ -224,6 +249,41 @@ namespace BloomHarvester
 			}
 
 			return warnings;
+		}
+
+		/// <summary>
+		/// Uploads a book for publishing to the bloomharvest bucket.
+		/// </summary>
+		/// <param name="downloadUrl">Precondition: The URL should not be encoded.</param>
+		/// <param name="downloadBookDir"></param>
+		private void UploadBook(string downloadUrl, string downloadBookDir)
+		{
+			// ENHANCE: Maybe you can delete some files that you don't need out of here.
+
+			RenameFilesForHarvestUpload(downloadBookDir);
+			var components = new S3UrlComponents(downloadUrl);
+			string bucketLocationSuffix = $"{components.Submitter}/{components.BookGuid}/bloomdigital";
+			_s3UploadClient.UploadDirectory(downloadBookDir, bucketLocationSuffix);
+		}
+
+		// Consumers expect the file to be in index.htm name, not {title}.htm name.
+		private static void RenameFilesForHarvestUpload(string bookDirectory)
+		{
+			string title = GetBookTitleFromBookPath(bookDirectory);
+			string originalHtmFilePath = Path.Combine(bookDirectory, $"{title}.htm");
+
+			Debug.Assert(File.Exists(originalHtmFilePath), "Book HTM not found: " + originalHtmFilePath);
+			if (File.Exists(originalHtmFilePath))
+			{
+				string newHtmFilePath = Path.Combine(bookDirectory, $"index.htm");
+				File.Copy(originalHtmFilePath, newHtmFilePath);
+				File.Delete(originalHtmFilePath);
+			}
+		}
+
+		public static string GetBookTitleFromBookPath(string bookPath)
+		{
+			return Path.GetFileName(bookPath);
 		}
 
 		private void HarvestWarnings()
