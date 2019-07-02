@@ -7,13 +7,16 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Web;
 using Bloom;
+using Bloom.Book;
 using Bloom.Collection;
+using Bloom.Publish.Epub;
+using Bloom.web;
 using Bloom.WebLibraryIntegration;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
-using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomTemp;
+using Book = BloomHarvester.Parse.Model.Book;
 
 namespace BloomHarvester
 {
@@ -182,6 +185,9 @@ namespace BloomHarvester
 					// Make the .bloomd and /bloomdigital outputs
 					UploadBloomD(decodedUrl, downloadBookDir);
 
+					// And a default epub
+					UploadEpub(decodedUrl, downloadBookDir);
+
 					// Write the updates
 					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
 					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
@@ -306,6 +312,39 @@ namespace BloomHarvester
 					_logger.TrackEvent("Upload bloomdigital directory");
 					_s3UploadClient.UploadDirectory(unzippedPath, $"{s3FolderLocation}/bloomdigital");
 				}
+			}
+		}
+
+		/// <summary>
+		/// Converts a book to Epub and uploads it for publishing to the bloomharvest bucket.
+		/// </summary>
+		/// <param name="downloadUrl">Precondition: The URL should not be encoded.</param>
+		/// <param name="downloadBookDir"></param>
+		private void UploadEpub(string downloadUrl, string downloadBookDir)
+		{
+			var components = new S3UrlComponents(downloadUrl);
+
+			Bloom.Program.RunningNonApplicationMode = true;
+
+			Bloom.Book.BookServer bookServer = _projectContext.BookServer;
+			BookThumbNailer thumbNailer = _projectContext.ThumbNailer;
+			var maker = new EpubMaker(thumbNailer, bookServer);
+			maker.Book = bookServer.GetBookFromBookInfo(new BookInfo(downloadBookDir, true));
+			maker.Unpaginated = true; // so far they all are
+			maker.OneAudioPerPage = true; // default used in EpubApi
+			// Enhance: maybe we want book to have image descriptions on page? use reader font sizes?
+			using (var folderForOutput = new TemporaryFolder("BloomHarvesterStagingEpub"))
+			{
+				string epubOutputPath = Path.Combine(folderForOutput.FolderPath, $"{components.BookTitle}.epub");
+
+				// Make the epub
+				Bloom.Browser.SetUpXulRunner();
+				maker.SaveEpub(epubOutputPath, new NullWebSocketProgress());
+
+				string s3FolderLocation = $"{components.Submitter}/{components.BookGuid}/epub";
+
+				_logger.TrackEvent("Upload .epub");
+				_s3UploadClient.UploadFile(epubOutputPath, s3FolderLocation);
 			}
 		}
 
