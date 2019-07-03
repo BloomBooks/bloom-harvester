@@ -74,11 +74,11 @@ namespace BloomHarvester
 					break;
 			}
 			_transfer = new BookTransfer(_parseClient,
-				bloomS3Client: new HarvesterS3Client(downloadBucketName),
+				bloomS3Client: new HarvesterS3Client(downloadBucketName, parseDBEnvironment, true),
 				htmlThumbnailer: null,
 				bookDownloadStartingEvent: new BookDownloadStartingEvent());
 
-			_s3UploadClient = new HarvesterS3Client(uploadBucketName);
+			_s3UploadClient = new HarvesterS3Client(uploadBucketName, parseDBEnvironment, false);
 
 			_applicationContainer = new Bloom.ApplicationContainer();
 			Bloom.Program.SetUpLocalization(_applicationContainer);

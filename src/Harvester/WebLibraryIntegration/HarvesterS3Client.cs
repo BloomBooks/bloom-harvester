@@ -18,9 +18,14 @@ namespace BloomHarvester.WebLibraryIntegration
 		public const string HarvesterSandboxBucketName = "bloomharvest-sandbox";
 		public const string HarvesterProductionBucketName = "bloomharvest";
 
-		public HarvesterS3Client(string bucketName)
+		private EnvironmentSetting _s3Environment;
+		private bool _forReading;
+
+		public HarvesterS3Client(string bucketName, EnvironmentSetting s3Environment, bool forReading)
 			: base(bucketName)
 		{
+			_s3Environment = s3Environment;
+			_forReading = forReading;
 		}
 
 		internal static IEnumerable<string> EnumerateAllBloomLibraryBucketNames()
@@ -39,9 +44,21 @@ namespace BloomHarvester.WebLibraryIntegration
 
 		protected override IAmazonS3 CreateAmazonS3Client(string bucketName, AmazonS3Config s3Config)
 		{
+			var bucketType = _forReading ? "Books" : "Harvester";
+			// The keys aren't very important for reading, since the data we want to read is public,
+			// but it seems they do need to belong to the right project. Note that currently both the
+			// read buckets are in the same project as the dev harvester bucket, so the same keys
+			// work for both dev and prod reading as for dev writing, while we need different ones for prod writing.
+			// However, this may not always be the case, so the code is set up for the complete set of
+			// four pairs of keys. In particular we may eventually remove public read access from
+			// the BloomBooks buckets (Bloom only needs to write to them, only the harvester needs to
+			// read), at which point keys giving the harvester read access will become critical.
+			// We may be able to consolidate down to one set of keys for the harvester user (which
+			// is configured to have appropriate access to all buckets) once we get back to having
+			// all the buckets in one account/project (i.e., sil-lead).
 			return new AmazonS3Client(
-				Environment.GetEnvironmentVariable("BloomHarvesterS3Key"),
-				Environment.GetEnvironmentVariable("BloomHarvesterS3SecretKey"),
+				Environment.GetEnvironmentVariable($"Bloom{bucketType}S3Key{_s3Environment}"),
+				Environment.GetEnvironmentVariable($"Bloom{bucketType}S3SecretKey{_s3Environment}"),
 				RegionEndpoint.USEast1);
 		}
 

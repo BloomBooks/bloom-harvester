@@ -13,7 +13,9 @@ If you want to view the logs or status in Azure Portal, you will obviously also 
 ** BloomHarvesterParseAppId{Prod|Test|Dev}
 *** You can find this from Parse DB dashboard. Or contact andrew_polk@sil.org.
 ** BloomHarvesterS3[Secret]Key{Prod|Test|Dev}.
+** BloomBooksS3[Secret]Key{Prod|Test|Dev}.
 *** Ask Alex Crum, alex_crum@sil.org. You can also ask jeffrey_su@sil.org or john_thomson@sil.org.
+*** The first set are for a user that can write to the harvester output bucket, the second set for one that can read from the bucket where it gets books.
 ** BloomHarvesterUserName
 *** harvester@bloomlibrary.org
 ** BloomHarvesterUserPassword{Prod|Test|Dev|Local}

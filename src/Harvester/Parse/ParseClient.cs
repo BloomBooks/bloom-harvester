@@ -32,7 +32,9 @@ namespace BloomHarvester.Parse
 			switch (environment)
 			{
 				case EnvironmentSetting.Prod:
-					url = "https://parse.bloomlibrary.org/";
+					// This URL gets redirected. It seems to work for reading, but not for writing. For that, we need the direct one.
+					//url = "https://parse.bloomlibrary.org/";
+					url = "https://bloom-parse-server-production.azurewebsites.net/parse";
 					break;
 				case EnvironmentSetting.Test:
 					url = "https://bloom-parse-server-unittest.azurewebsites.net/parse";
