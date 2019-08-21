@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -15,11 +15,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Autofac" Version="4.1.1" />
     <PackageReference Include="AWSSDK.S3" Version="3.3.102.11" />
     <PackageReference Include="CommandLineParser" Version="2.5.0" />
     <PackageReference Include="Geckofx45" Version="45.0.28" />
     <PackageReference Include="Microsoft.ApplicationInsights.TraceListener" Version="2.10.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
     <PackageReference Include="RestSharp" Version="105.2.3" />
   </ItemGroup>
 

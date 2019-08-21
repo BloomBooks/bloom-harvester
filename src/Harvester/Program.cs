@@ -22,6 +22,8 @@ namespace BloomHarvester
 		// harvestAll --environment=dev --parseDBEnvironment=local --suppressLogs "--queryWhere={ \"objectId\":\"38WdeYJ0yF\"}"
 		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"objectId\":\"JUCL9OMOza\"}"
 		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$in\":[\"Vaccinations\",\"Fox and Frog\",\"The Moon and the Cap\"]}}"
+		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"}}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
+		// harvestAll --environment=dev --parseDBEnvironment=prod --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"},\"tags\":\"bookshelf:Ministerio de Educación de Guatemala\"}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
 		[STAThread]
 		public static void Main(string[] args)
 		{
@@ -33,7 +35,7 @@ namespace BloomHarvester
 				settings.CaseSensitive = false;
 				settings.HelpWriter = Console.Error;
 			});
-			
+
 			try
 			{
 				parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions, HarvestWarningsOptions>(args)
@@ -90,14 +92,14 @@ namespace BloomHarvester
 				$"parseDBEnvironment: {ParseDBEnvironment}\n" +
 				$"logEnvironment: {LogEnvironment}\n" +
 				$"suppressLogs: {SuppressLogs}\n" +
-				$"queryWhere: { QueryWhere}";
+				$"queryWhere: {QueryWhere}";
 		}
 	}
 
 	[Verb("harvestAll", HelpText = "Run Harvester on all books.")]
 	public class HarvestAllOptions  : HarvesterCommonOptions
 	{
-		[Option("Count", Required = false, Default =-1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
+		[Option("count", Required = false, Default =-1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
 		public int Count { get; set; }
 
 		public override string GetPrettyPrint()

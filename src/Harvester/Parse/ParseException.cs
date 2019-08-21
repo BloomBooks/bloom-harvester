@@ -36,8 +36,8 @@ namespace BloomHarvester.Parse
 				return "";
 			}
 
-			string uriForMessage = response.ResponseUri.ToString();
-			int passwordIndex = uriForMessage.IndexOf("password=");
+			string uriForMessage = response.ResponseUri?.ToString();
+			int passwordIndex = uriForMessage?.IndexOf("password=") ?? -1;
 
 			if (passwordIndex >= 0)
 			{

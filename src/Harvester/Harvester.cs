@@ -2,17 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Web;
 using Bloom;
-using Bloom.Book;
 using Bloom.Collection;
-using Bloom.Publish.Epub;
-using Bloom.web;
-using Bloom.web.controllers;
 using Bloom.WebLibraryIntegration;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
@@ -31,13 +25,16 @@ namespace BloomHarvester
 		private HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
 
 		private ApplicationContainer _applicationContainer;
-		private ProjectContext _projectContext;
+
+		private const int kCreateArtifactsTimeoutSecs = 120;	// TODO: Maybe bump it up to 5 min (300 secs) after development stabilized
 
 		internal bool IsDebug { get; set; }
 
 		public string Identifier { get; set; }
 
 		private HarvesterCommonOptions _options;
+
+		private List<Book> failedBooks = new List<Book>();
 
 		public Harvester(HarvesterCommonOptions options)
 		{
@@ -122,21 +119,27 @@ namespace BloomHarvester
 		/// </summary>
 		/// 
 		/// <param name="maxBooksToProcess"></param>
-		private void HarvestAll(int maxBooksToProcess = -1, string queryWhereJson = "")
+		private bool HarvestAll(int maxBooksToProcess = -1, string queryWhereJson = "")
 		{
 			_logger.TrackEvent("HarvestAll Start");
 			var methodStopwatch = new Stopwatch();
 			methodStopwatch.Start();
 
 			int numBooksProcessed = 0;
+			int numBooksFailed = 0;
 
 			IEnumerable<Book> bookList = _parseClient.GetBooks(queryWhereJson);
-			// Various publishing steps use GeckoFx windows; this is required one-time initialization.
-			Bloom.Browser.SetUpXulRunner();
+
 			CollectionSettings.HarvesterMode = true;
 			foreach (var book in bookList)
 			{
-				ProcessOneBook(book);
+				bool isProcessSuccessfully = ProcessOneBook(book);
+				if (!isProcessSuccessfully)
+				{
+					++numBooksFailed;
+					failedBooks.Add(book);
+				}
+
 				++numBooksProcessed;
 
 				if (maxBooksToProcess > 0 && numBooksProcessed >= maxBooksToProcess)
@@ -147,13 +150,30 @@ namespace BloomHarvester
 
 			_parseClient.FlushBatchableOperations();
 			methodStopwatch.Stop();
-			Console.Out.WriteLine($"HarvestAll took {methodStopwatch.ElapsedMilliseconds / 1000.0} seconds.");
+			Console.Out.WriteLine($"HarvestAll took {(methodStopwatch.ElapsedMilliseconds / 1000.0):0.0} seconds.");
 
-			_logger.TrackEvent("HarvestAll End - Success");
+			bool isSuccess = true;
+			if (numBooksFailed > 0)
+			{
+				isSuccess = false;
+				double percentFailed = ((double)numBooksFailed) / numBooksProcessed * 100;
+				_logger.LogError($"Errors encounted: {numBooksFailed} books failed out of {numBooksProcessed} total ({percentFailed:0.0}% failed)");
+				
+				if (failedBooks != null && failedBooks.Any())
+				{
+					string errorMessage = "Books with errors:\n\t" + String.Join("\n\t", failedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
+					_logger.LogError(errorMessage);
+				}
+			}
+
+			_logger.TrackEvent("HarvestAll End");
+
+			return isSuccess;
 		}
-
-		private void ProcessOneBook(Book book)
+				
+		private bool ProcessOneBook(Book book)
 		{
+			bool isSuccessful = true;
 			try
 			{
 				_logger.TrackEvent("ProcessOneBook Start");
@@ -178,38 +198,28 @@ namespace BloomHarvester
 				_logger.LogVerbose("Download Dir: {0}", downloadRootDir);
 				string downloadBookDir = _transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
 				if (_options.ReadOnly)
-					return;
+					return isSuccessful;
 
-				// Set up a project context
+				// Process the book
+				var finalUpdates = new UpdateOperation();
+				var warnings = FindBookWarnings(book);
+				finalUpdates.UpdateField(Book.kWarningsField, Book.ToJson(warnings));
+
 				var analyzer = BookAnalyzer.fromFolder(downloadBookDir);
 				var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
-				using (_projectContext = _applicationContainer.CreateProjectContext(collectionFilePath))
-				{
-					Bloom.Program.SetProjectContext(_projectContext);
 
-					// Process the book
-					var finalUpdates = new UpdateOperation();
-					var warnings = FindBookWarnings(book);
-					finalUpdates.UpdateField(Book.kWarningsField, Book.ToJson(warnings));
+				isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath);
 
-					// Make the .bloomd and /bloomdigital outputs
-					UploadBloomD(decodedUrl, downloadBookDir);
-
-					// And a default epub
-					UploadEpub(decodedUrl, downloadBookDir);
-
-					// Write the updates
-					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
-					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
-				}
-
-				_projectContext = null; // fail fast if we try to use it while we don't have one.
+				// Write the updates
+				finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
+				_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
 
 				_logger.TrackEvent("ProcessOneBook End - Success");
 			}
 			catch (Exception e)
 			{
-				YouTrackIssueConnector.SubmitToYouTrack(e, $"Unhandled exception thrown while processing book \"{book.BaseUrl}\"");
+				isSuccessful = false;
+				YouTrackIssueConnector.SubmitToYouTrack(e, $"Unhandled exception thrown while processing book \"{book.BaseUrl}\"", exitImmediately: false);
 
 				// Attempt to write to Parse that processing failed
 				if (!String.IsNullOrEmpty(book?.ObjectId))
@@ -226,8 +236,9 @@ namespace BloomHarvester
 						// If it fails, just let it be and throw the first exception rather than the nested exception.
 					}
 				}
-				throw;
 			}
+
+			return isSuccessful;
 		}
 
 		// Precondition: Assumes that baseUrl is not URL-encoded, and that it ends with the book title as a subfolder.
@@ -284,105 +295,118 @@ namespace BloomHarvester
 			return warnings;
 		}
 
-		/// <summary>
-		/// Converts a book to BloomD and uploads it for publishing to the bloomharvest bucket.
-		/// </summary>
-		/// <param name="downloadUrl">Precondition: The URL should not be encoded.</param>
-		/// <param name="downloadBookDir"></param>
-		private void UploadBloomD(string downloadUrl, string downloadBookDir)
+		private bool CreateArtifacts(string downloadUrl, string downloadBookDir, string collectionFilePath)
 		{
-			var components = new S3UrlComponents(downloadUrl);
+			bool success = true;
 
-			Bloom.Program.RunningNonApplicationMode = true;
-
-			Bloom.Book.BookServer bookServer = _projectContext.BookServer;
 			using (var folderForUnzipped = new TemporaryFolder("BloomHarvesterStagingUnzipped"))
 			{
 				using (var folderForZipped = new TemporaryFolder("BloomHarvesterStagingZipped"))
 				{
+					var components = new S3UrlComponents(downloadUrl);
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{components.BookTitle}.bloomd");
+					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{components.BookTitle}.epub");
 
-					// Make the bloomd
-					string unzippedPath = Bloom.Publish.Android.BloomReaderFileMaker.CreateBloomDigitalBook(
-						zippedBloomDOutputPath,
-						downloadBookDir,
-						bookServer,
-						System.Drawing.Color.Azure,	// TODO: What should this be?
-						new Bloom.web.NullWebSocketProgress(),
-						folderForUnzipped,
-						creator: "harvester");
+					string bloomArguments = $"createArtifacts \"--bookPath={downloadBookDir}\" \"--collectionPath={collectionFilePath}\" \"--bloomdOutputPath={zippedBloomDOutputPath}\" \"--bloomDigitalOutputPath={folderForUnzipped.FolderPath}\" \"--epubOutputPath={epubOutputPath}\"";
 
-					// Currently the zipping process does some things we actually need, like making the cover picture
-					// transparent (BL-7437). Eventually we plan to separate the preparation and zipping steps (BL-7445).
-					// Until that is done, the most reliable way to get an unzipped BloomD for our preview is to actually
-					// unzip the BloomD.
-					using (var folderForUnzippedOutput = new TemporaryFolder("BloomHarvesterStagingOutput"))
+					// Start a Bloom command line in a separate process
+					_logger.LogVerbose("Starting Bloom CLI process");
+					var bloomCliStopwatch = new Stopwatch();
+					bloomCliStopwatch.Start();
+					bool exitedNormally = StartAndWaitForBloomCli(bloomArguments, kCreateArtifactsTimeoutSecs * 1000, out int bloomExitCode, out string bloomStdOut, out string bloomStdErr);
+					bloomCliStopwatch.Stop();
+
+					if (exitedNormally)
 					{
-						ZipFile.ExtractToDirectory(zippedBloomDOutputPath, folderForUnzippedOutput.FolderPath);
-						RenameFilesForHarvestUpload(folderForUnzippedOutput.FolderPath);
-
-						string s3FolderLocation = $"{components.Submitter}/{components.BookGuid}";
-
-						_logger.TrackEvent("Upload .bloomd");
-						_s3UploadClient.UploadFile(zippedBloomDOutputPath, s3FolderLocation);
-
-						_logger.TrackEvent("Upload bloomdigital directory");
-						_s3UploadClient.UploadDirectory(folderForUnzippedOutput.FolderPath,
-							$"{s3FolderLocation}/bloomdigital");
+						string logMessage = $"CreateArtifacts finished in {bloomCliStopwatch.Elapsed.TotalSeconds:0.0} seconds.";
+						if (bloomExitCode == 0)
+						{
+							_logger.LogVerbose(logMessage);
+						}
+						else
+						{
+							success = false;
+							logMessage += $"\nAbnormal exit code: {bloomExitCode}.";
+							_logger.LogError(logMessage);
+						}
 					}
+					else
+					{
+						success = false;
+						_logger.LogError($"CreateArtifacts terminated because it exceeded {kCreateArtifactsTimeoutSecs} seconds. Book Title: {components.BookTitle}.");
+					}
+
+
+
+					string s3FolderLocation = $"{components.Submitter}/{components.BookGuid}";
+
+					_logger.TrackEvent("Upload .bloomd");
+					_s3UploadClient.UploadFile(zippedBloomDOutputPath, s3FolderLocation);
+
+					_logger.TrackEvent("Upload bloomdigital directory");
+					_s3UploadClient.UploadDirectory(folderForUnzipped.FolderPath,
+						$"{s3FolderLocation}/bloomdigital");
+
+					_logger.TrackEvent("Upload .epub");
+					_s3UploadClient.UploadFile(epubOutputPath, $"{s3FolderLocation}/epub");
 				}
 			}
+
+			return success;
 		}
 
 		/// <summary>
-		/// Converts a book to Epub and uploads it for publishing to the bloomharvest bucket.
+		/// Starts a Bloom instance in a new process and waits up to the specified amount of time for it to finish.
 		/// </summary>
-		/// <param name="downloadUrl">Precondition: The URL should not be encoded.</param>
-		/// <param name="downloadBookDir"></param>
-		private void UploadEpub(string downloadUrl, string downloadBookDir)
+		/// <param name="arguments">The arguments to pass to Bloom. (Don't include the name of the executable.)</param>
+		/// <param name="timeoutMilliseconds">After this amount of time, the process will be killed if it's still running</param>
+		/// <param name="exitCode">Out parameter. The exit code of the process.</param>
+		/// <param name="standardOutput">Out parameter. The standard output of the process.</param>
+		/// <param name="standardError">Out parameter. The standard error of the process.</param>
+		/// <returns>Returns true if the process ended by itself without timeout. Returns false if the process was forcibly terminated.</returns>
+		public static bool StartAndWaitForBloomCli(string arguments, int timeoutMilliseconds, out int exitCode, out string standardOutput, out string standardError)
 		{
-			var components = new S3UrlComponents(downloadUrl);
-
-			Bloom.Program.RunningNonApplicationMode = true;
-
-			Bloom.Book.BookServer bookServer = _projectContext.BookServer;
-			BookThumbNailer thumbNailer = _projectContext.ThumbNailer;
-			var maker = new EpubMaker(thumbNailer, bookServer);
-			maker.Book = bookServer.GetBookFromBookInfo(new BookInfo(downloadBookDir, true));
-			maker.Unpaginated = true; // so far they all are
-			maker.OneAudioPerPage = true; // default used in EpubApi
-			// Enhance: maybe we want book to have image descriptions on page? use reader font sizes?
-			using (var folderForOutput = new TemporaryFolder("BloomHarvesterStagingEpub"))
+			var process = new Process()
 			{
-				string epubOutputPath = Path.Combine(folderForOutput.FolderPath, $"{components.BookTitle}.epub");
+				StartInfo = new ProcessStartInfo()
+				{
+					FileName = "Bloom.exe",
+					Arguments = arguments,
+					UseShellExecute = false,
+					RedirectStandardOutput = true,
+					RedirectStandardError = true
+				}
+			};
 
-				// Make the epub
-				maker.SaveEpub(epubOutputPath, new NullWebSocketProgress());
+			process.Start();
 
-				string s3FolderLocation = $"{components.Submitter}/{components.BookGuid}/epub";
+			// Block and wait for it to finish
+			bool hasExited = process.WaitForExit(timeoutMilliseconds);
 
-				_logger.TrackEvent("Upload .epub");
-				_s3UploadClient.UploadFile(epubOutputPath, s3FolderLocation);
-			}
-		}
-
-		// Consumers expect the file to be in index.htm name, not {title}.htm name.
-		private static void RenameFilesForHarvestUpload(string bookDirectory)
-		{
-			string originalHtmFilePath = Bloom.Book.BookStorage.FindBookHtmlInFolder(bookDirectory);
-
-			Debug.Assert(File.Exists(originalHtmFilePath), "Book HTM not found: " + originalHtmFilePath);
-			if (File.Exists(originalHtmFilePath))
+			bool isExitedNormally = true;
+			if (!hasExited)
 			{
-				string newHtmFilePath = Path.Combine(bookDirectory, $"index.htm");
-				File.Copy(originalHtmFilePath, newHtmFilePath);
-				File.Delete(originalHtmFilePath);
+				try
+				{
+					process.Kill();
+					isExitedNormally = false;
+				}
+				catch
+				{
+					// Just make a best effort to kill the process, but no need to throw exception if it didn't work
+				}
 			}
-		}
 
-		public static string GetBookTitleFromBookPath(string bookPath)
-		{
-			return Path.GetFileName(bookPath);
+			exitCode = process.ExitCode;
+			standardOutput = process.StandardOutput.ReadToEnd();
+			standardError = process.StandardError.ReadToEnd();
+
+			if (!String.IsNullOrWhiteSpace(standardOutput))
+				Console.Out.WriteLine("Standard out: " + standardOutput);
+			if (!String.IsNullOrWhiteSpace(standardError))
+				Console.Out.WriteLine("Standard error: " + standardError);
+
+			return isExitedNormally;
 		}
 
 		private void HarvestWarnings()

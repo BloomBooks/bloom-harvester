@@ -103,7 +103,7 @@ namespace BloomHarvester.WebLibraryIntegration
 					fileTransferUtility.Upload(request);
 
 				}
-				catch (Exception e)
+				catch
 				{
 					throw;
 				}

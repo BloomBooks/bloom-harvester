@@ -395,9 +395,15 @@ namespace BloomHarvester.Parse
 				string responseJson = restResponse.Content;
 
 				var response = JsonConvert.DeserializeObject<Parse.ParseResponse<T>>(responseJson);
-				totalCount = response.Count;
 
-				var currentResultCount = response.Results.Length;
+				totalCount = response.Count;
+				if (totalCount == 0)
+				{
+					Console.Out.WriteLine("Query returned no results.");
+					break;
+				}
+
+				var currentResultCount = response.Results.Length;				
 				if (currentResultCount <= 0)
 				{
 					break;

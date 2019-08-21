@@ -22,9 +22,8 @@ If you want to view the logs or status in Azure Portal, you will obviously also 
 *** Ask jeffrey_su@sil.org or john_thomson@sil.org.
 ## dependency on Bloom
 We haven't yet fully automated getting all dependencies. Currently, the best approach is to build harvester, then
-- copy Bloom's Distfiles directory into havester's src/Harvester/bin/Debug/net461 directory.
-- also copy contents of Bloom's output/Debug  directory there (generally replace files already present)
-- also copy output/browser to that same directory (the folder itself with its contents, not just the contents)
+- copy Bloom's entire DistFiles directory into havester's src/Harvester/bin/Debug/net461 directory. (Or, copy just the 3 required: localization, BloomBlankPage.htm, and connections.dll)
+- also copy output/browser to that same directory (the folder itself with its contents, not just the contents). (Specifically, the following subfolders are currently required: bookEdit, bookLayout, bookPreview, branding, collection, lib, publish, templates, themes)
 ## Azure
 ### Searching for specific log text
 1. portal.azure.com
