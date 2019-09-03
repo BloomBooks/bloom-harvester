@@ -2,7 +2,7 @@
   "profiles": {
     "BloomHarvester": {
       "commandName": "Project",
-      "commandLineArgs": "harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs  \"--queryWhere={ \\\"objectId\\\":\\\"Kz1tA9EK22\\\"}\""
+      "commandLineArgs": "harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs  \"--queryWhere={ \\\"objectId\\\":{\\\"$in\\\":[\\\"wf4nV0qo1G\\\"]}}\""
     }
   }
 }

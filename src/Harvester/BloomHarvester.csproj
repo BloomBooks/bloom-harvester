@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -7,6 +7,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <DefineConstants>TRACE</DefineConstants>
+    <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -18,6 +19,7 @@
     <PackageReference Include="Autofac" Version="4.1.1" />
     <PackageReference Include="AWSSDK.S3" Version="3.3.102.11" />
     <PackageReference Include="CommandLineParser" Version="2.5.0" />
+    <PackageReference Include="EasyHttp" Version="1.7.0" />
     <PackageReference Include="Geckofx45" Version="45.0.28" />
     <PackageReference Include="Microsoft.ApplicationInsights.TraceListener" Version="2.10.0" />
     <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
@@ -25,15 +27,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Reference Include="Bloom">
+      <HintPath>..\..\lib\dotnet\Bloom.exe</HintPath>
+    </Reference>
     <!--
     <Reference Include="Bloom">
-      <HintPath>..\..\lib\dotnet\Bloom.exe</HintPath>
-    </Reference>
-    -->
-    <Reference Include="Bloom">
-      <HintPath>..\..\lib\dotnet\Bloom.exe</HintPath>
+      <HintPath>..\..\..\BloomDesktop4.7\output\Debug\Bloom.exe</HintPath>
       <SpecificVersion>false</SpecificVersion>
     </Reference>
+    -->
     <Reference Include="L10NSharp">
       <HintPath>..\..\lib\dotnet\L10NSharp.dll</HintPath>
     </Reference>

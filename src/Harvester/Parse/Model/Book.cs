@@ -18,7 +18,7 @@ namespace BloomHarvester.Parse.Model
 
         public const string kHarvestStateField = "harvestState";
         public const string kHarvesterIdField = "harvesterId";
-        public const string kWarningsField = "warnings";
+        public const string kHarvestLogField = "harvestLog";
 
         // Returns the class name (like a table name) of the class on the Parse server that this object corresponds to
         internal override string GetParseClassName()

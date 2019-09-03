@@ -19,20 +19,20 @@ namespace BloomHarvester
 	// This class is responsible for coordinating the running of the application logic
 	public class Harvester : IDisposable
 	{
+		private const int kCreateArtifactsTimeoutSecs = 120;    // TODO: Maybe bump it up to 5 min (300 secs) after development stabilized
+		private const int kGetFontsTimeoutSecs = 20;
+
 		protected IMonitorLogger _logger;
 		private ParseClient _parseClient;
 		private BookTransfer _transfer;
 		private HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
-
-		private const int kCreateArtifactsTimeoutSecs = 120;	// TODO: Maybe bump it up to 5 min (300 secs) after development stabilized
+		private HarvesterCommonOptions _options;
+		private List<Book> _failedBooks = new List<Book>();
+		private HashSet<string> _missingFonts = new HashSet<string>();
 
 		internal bool IsDebug { get; set; }
-
 		public string Identifier { get; set; }
 
-		private HarvesterCommonOptions _options;
-
-		private List<Book> failedBooks = new List<Book>();
 
 		public Harvester(HarvesterCommonOptions options)
 		{
@@ -131,7 +131,7 @@ namespace BloomHarvester
 				if (!success)
 				{
 					++numBooksFailed;
-					failedBooks.Add(book);
+					_failedBooks.Add(book);
 				}
 
 				++numBooksProcessed;
@@ -147,13 +147,13 @@ namespace BloomHarvester
 			Console.Out.WriteLine($"HarvestAll took {(methodStopwatch.ElapsedMilliseconds / 1000.0):0.0} seconds.");
 
 			bool isSuccess = true;
-			if (failedBooks != null && failedBooks.Any())
+			if (_failedBooks != null && _failedBooks.Any())
 			{
 				isSuccess = false;
 				double percentFailed = ((double)numBooksFailed) / numBooksProcessed * 100;
 				_logger.LogError($"Errors encounted: {numBooksFailed} books failed out of {numBooksProcessed} total ({percentFailed:0.0}% failed)");
 				
-				string errorMessage = "Books with errors:\n\t" + String.Join("\n\t", failedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
+				string errorMessage = "Books with errors:\n\t" + String.Join("\n\t", _failedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
 				_logger.LogError(errorMessage);
 			}
 
@@ -179,7 +179,10 @@ namespace BloomHarvester
 				var startTime = new Parse.Model.Date(DateTime.UtcNow);
 				initialUpdates.UpdateField("harvestStartedAt", startTime.ToJson());
 
-				_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, initialUpdates.ToJson());
+				if (!_options.ReadOnly)
+				{
+					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, initialUpdates.ToJson());
+				}
 
 				// Download the book
 				_logger.TrackEvent("Download Book");
@@ -188,29 +191,48 @@ namespace BloomHarvester
 				string downloadRootDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
 				_logger.LogVerbose("Download Dir: {0}", downloadRootDir);
 				string downloadBookDir = _transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
-				if (_options.ReadOnly)
-					return isSuccessful;
 
 				// Process the book
 				var finalUpdates = new UpdateOperation();
-				var warnings = FindBookWarnings(book);
-				finalUpdates.UpdateField(Book.kWarningsField, Book.ToJson(warnings));
+				List<string> harvestLogEntries = CheckForMissingFontErrors(downloadBookDir, book);
+				bool anyFontsMissing = harvestLogEntries.Any();
+				isSuccessful &= !anyFontsMissing;
+				
+				if (isSuccessful)
+				{
+					var warnings = FindBookWarnings(book);
+					harvestLogEntries.AddRange(warnings);
+					
+					if (_options.ReadOnly)
+						return isSuccessful;
 
-				var analyzer = BookAnalyzer.fromFolder(downloadBookDir);
-				var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
+					var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
+					var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
 
-				isSuccessful = CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath);
+					isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath);
+				}
+
+				finalUpdates.UpdateField(Book.kHarvestLogField, Book.ToJson(harvestLogEntries));
+				if (isSuccessful)
+				{
+					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
+				}
+				else
+				{
+					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Failed.ToString());
+				}
 
 				// Write the updates
-				finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
-				_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
-
-				_logger.TrackEvent("ProcessOneBook End - Success");
+				if (!_options.ReadOnly)
+				{
+					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
+				}
+				_logger.TrackEvent("ProcessOneBook End - " + (isSuccessful ? "Success" : "Error"));
 			}
 			catch (Exception e)
 			{
 				isSuccessful = false;
-				YouTrackIssueConnector.SubmitToYouTrack(e, $"Unhandled exception thrown while processing book \"{book.BaseUrl}\"", exitImmediately: false);
+				YouTrackIssueConnector.ReportExceptionToYouTrack(e, $"Unhandled exception thrown while processing book \"{book.BaseUrl}\"", exitImmediately: false);
 
 				// Attempt to write to Parse that processing failed
 				if (!String.IsNullOrEmpty(book?.ObjectId))
@@ -257,7 +279,7 @@ namespace BloomHarvester
 
 			return urlWithoutTitle;
 		}
-				
+
 		/// <summary>
 		/// Determines whether any warnings regarding a book should be displayed to the user on Bloom Library
 		/// </summary>
@@ -274,16 +296,102 @@ namespace BloomHarvester
 
 			if (String.IsNullOrWhiteSpace(book.BaseUrl))
 			{
-				warnings.Add("Missing baseUrl");
+				warnings.Add("WARN: Missing baseUrl");
 			}
 
-			// ENHANCE: Add the real implementation one day, when we have a spec for what warnings we might actually want
-			if (book.BaseUrl != null && book.BaseUrl.Contains("gmail"))
+			if (warnings.Any())
 			{
-				warnings.Add("Gmail user");
+				_logger.LogWarn("Warnings: " + String.Join(";", warnings));
 			}
 
 			return warnings;
+		}
+
+		// Returns true if at least one font is missing
+		private List<string> CheckForMissingFontErrors(string bookPath, Book book)
+		{
+			var harvestLogEntries = new List<string>();
+
+			var missingFontsForCurrBook = GetMissingFonts(bookPath);
+			bool areAnyFontsMissing = missingFontsForCurrBook != null && missingFontsForCurrBook.Any();
+			if (areAnyFontsMissing)
+			{
+				_logger.LogWarn("Missing fonts: " + String.Join(",", missingFontsForCurrBook));
+				_missingFonts.UnionWith(missingFontsForCurrBook);
+
+				foreach (var missingFont in missingFontsForCurrBook)
+				{
+					harvestLogEntries.Add("Error: Missing font " + missingFont);
+					YouTrackIssueConnector.ReportMissingFontToYouTrack(missingFont, this.Identifier, book);
+				}
+			}
+
+			return harvestLogEntries;
+		}
+
+		/// <summary>
+		/// Gets the names of the fonts referenced in the book but not found on this machine.
+		/// </summary>
+		/// <param name="bookPath">The path to the book folder</param>
+		private List<string> GetMissingFonts(string bookPath)
+		{
+			var missingFonts = new List<string>();
+
+			using (var reportFile = SIL.IO.TempFile.CreateAndGetPathButDontMakeTheFile())
+			{
+				string bloomArguments = $"getfonts --bookpath \"{bookPath}\" --reportpath \"{reportFile.Path}\"";
+				bool success = StartAndWaitForBloomCli(bloomArguments, kGetFontsTimeoutSecs, out int exitCode, out string stdOut, out string stdError);
+
+				if (!success)
+				{
+					_logger.LogError("Error: Could not determine fonts from book locatedd at " + bookPath);
+					return missingFonts;
+				}
+
+				var bookFontNames = GetFontsFromReportFile(reportFile.Path);
+				var computerFontNames = GetInstalledFontNames();
+
+				foreach (var bookFontName in bookFontNames)
+				{
+					if (!computerFontNames.Contains(bookFontName))
+					{
+						missingFonts.Add(bookFontName);
+					}
+				}
+			}
+
+			return missingFonts;
+		}
+
+		/// <summary>
+		/// Gets the fonts referenced by a book baesd on a "getfonts" report file. 
+		/// </summary>
+		/// <param name="filePath">The path to the report file generated from Bloom's "getfonts" CLI command. Each line of the file should correspond to 1 font name.</param>
+		/// <returns>A list of strings, one for each font referenced by the book.</returns>
+		private List<string> GetFontsFromReportFile(string filePath)
+		{
+			var referencedFonts = new List<string>();
+
+			string[] lines = File.ReadAllLines(filePath);   // Not expecting many lines in this file
+
+			if (lines != null)
+			{
+				foreach (var fontName in lines)
+				{
+					referencedFonts.Add(fontName);
+				}
+			}
+
+			return referencedFonts;
+		}
+
+		// Returns the names of each of the installed font families as a set of strings
+		private HashSet<string> GetInstalledFontNames()
+		{
+			var installedFontCollection = new System.Drawing.Text.InstalledFontCollection();
+
+			var fontFamilyDict = new HashSet<string>(installedFontCollection.Families.Select(x => x.Name), StringComparer.OrdinalIgnoreCase);
+			return fontFamilyDict;
 		}
 
 		private bool CreateArtifacts(string downloadUrl, string downloadBookDir, string collectionFilePath)
@@ -326,8 +434,6 @@ namespace BloomHarvester
 						success = false;
 						_logger.LogError($"CreateArtifacts terminated because it exceeded {kCreateArtifactsTimeoutSecs} seconds. Book Title: {components.BookTitle}.");
 					}
-
-
 
 					string s3FolderLocation = $"{components.Submitter}/{components.BookGuid}";
 

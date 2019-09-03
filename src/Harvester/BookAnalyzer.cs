@@ -52,7 +52,7 @@ namespace BloomHarvester
 			BloomCollection = sb.ToString();
 		}
 
-		public static BookAnalyzer fromFolder(string bookFolder)
+		public static BookAnalyzer FromFolder(string bookFolder)
 		{
 			var filename = Path.GetFileName(bookFolder);
 			var bookPath = Bloom.Book.BookStorage.FindBookHtmlInFolder(bookFolder);						 
