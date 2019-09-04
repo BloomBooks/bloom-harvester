@@ -21,9 +21,12 @@ If you want to view the logs or status in Azure Portal, you will obviously also 
 ** BloomHarvesterUserPassword{Prod|Test|Dev|Local}
 *** Ask jeffrey_su@sil.org or john_thomson@sil.org.
 ## dependency on Bloom
-We haven't yet fully automated getting all dependencies. Currently, the best approach is to build harvester, then
-- copy Bloom's entire DistFiles directory into havester's src/Harvester/bin/Debug/net461 directory. (Or, copy just the 3 required: localization, BloomBlankPage.htm, and connections.dll)
-- also copy output/browser to that same directory (the folder itself with its contents, not just the contents). (Specifically, the following subfolders are currently required: bookEdit, bookLayout, bookPreview, branding, collection, lib, publish, templates, themes)
+We haven't yet fully automated getting all dependencies. Currently, the best approach is to build harvester, then run the copyBloomDependencies.shl script.
+- Make sure you have a BloomDesktop repository and have built it.
+- Change direcotries to the Harvester's "build" folder. (The script makes some assumptions as to the location of the Harvester's build directory).
+- Run the copyBloomDependencies.sh script with the following arguments: "./copyBloomDependencies.sh [pathToBloomDesktopRepository]"
+- This script will copy some files from Bloom's output/browser folder and DistFiles folders into BloomHarvester's build folder.
+- You will normally only need to run this script once when you first start with a new Harvester repository. These dependencies typically won't need to be updated too often.
 ## Azure
 ### Searching for specific log text
 1. portal.azure.com
