@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace BloomHarvester.Parse.Model
@@ -32,10 +33,10 @@ namespace BloomHarvester.Parse.Model
 		/// </summary>
 		/// <param name="list"></param>
 		/// <returns>the JSON string representation</returns>
-		internal static string ToJson(IList<string> list)
+		internal static string ToJson(IEnumerable<string> list)
 		{
 			string json = "[]";
-			if (list?.Count > 0)
+			if (list?.Count() > 0)
 			{
 				json = $"[\"{String.Join("\", \"", list)}\"]";
 			}

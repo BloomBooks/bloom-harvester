@@ -18,7 +18,8 @@ namespace BloomHarvesterTests.Parse
 			var book = new Book()
 			{
 				BaseUrl = "www.amazon.com",
-				Warnings = new List<string>()
+				HarvestState = "Done",
+				HarvestLogEntries = new List<string>()
 			};
 			string bookJson = JsonConvert.SerializeObject(book);
 
@@ -31,7 +32,7 @@ namespace BloomHarvesterTests.Parse
 			string resultJson = ParseClient.GetBatchJson(inputList);
 
 			// Verify
-			string expectedJson = "{\"requests\": [{\"method\":\"POST\",\"path\":\"/classes/c1\",\"body\":{\"baseUrl\":\"www.amazon.com\",\"warnings\":[],\"objectId\":null}}] }";
+			string expectedJson = "{\"requests\": [{\"method\":\"POST\",\"path\":\"/classes/c1\",\"body\":{\"harvestState\":\"Done\",\"baseUrl\":\"www.amazon.com\",\"harvestLog\":[],\"objectId\":null}}] }";
 			Assert.AreEqual(expectedJson, resultJson);
 		}
 	}

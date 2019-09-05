@@ -8,6 +8,7 @@ using System.Web;
 using Bloom;
 using Bloom.Collection;
 using Bloom.WebLibraryIntegration;
+using BloomHarvester.LogEntries;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
 using BloomHarvester.WebLibraryIntegration;
@@ -28,6 +29,7 @@ namespace BloomHarvester
 		private HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
 		private HarvesterCommonOptions _options;
 		private List<Book> _failedBooks = new List<Book>();
+		private List<Book> _skippedBooks = new List<Book>();
 		private HashSet<string> _missingFonts = new HashSet<string>();
 
 		internal bool IsDebug { get; set; }
@@ -97,16 +99,6 @@ namespace BloomHarvester
 			}
 		}
 
-		public static void RunHarvestWarnings(HarvestWarningsOptions options)
-		{
-			Console.Out.WriteLine("Command Line Options: \n" + options.GetPrettyPrint());
-
-			using (Harvester harvester = new Harvester(options))
-			{
-				harvester.HarvestWarnings();
-			}
-		}
-
 		/// <summary>
 		/// Process all rows in the books table
 		/// Public interface should use RunHarvestAll() function instead. (So that we can guarantee that the class instance is properly disposed).
@@ -121,17 +113,26 @@ namespace BloomHarvester
 
 			int numBooksProcessed = 0;
 			int numBooksFailed = 0;
+			int numBookSkipped = 0;
 
 			IEnumerable<Book> bookList = _parseClient.GetBooks(queryWhereJson);
 
 			CollectionSettings.HarvesterMode = true;
 			foreach (var book in bookList)
 			{
-				bool success = ProcessOneBook(book);
-				if (!success)
+				var status = ProcessOneBook(book);
+				switch (status)
 				{
-					++numBooksFailed;
-					_failedBooks.Add(book);
+					case BookProcessingStatus.Failed:
+						++numBooksFailed;
+						_failedBooks.Add(book);
+						break;
+					case BookProcessingStatus.Skipped:
+						++numBookSkipped;
+						_skippedBooks.Add(book);
+						break;
+					default:
+						break;
 				}
 
 				++numBooksProcessed;
@@ -147,6 +148,17 @@ namespace BloomHarvester
 			Console.Out.WriteLine($"HarvestAll took {(methodStopwatch.ElapsedMilliseconds / 1000.0):0.0} seconds.");
 
 			bool isSuccess = true;
+
+			if (_skippedBooks != null && _skippedBooks.Any())
+			{
+				isSuccess = false;
+				double percentSkipped = ((double)numBookSkipped / numBooksProcessed * 100);
+				_logger.LogWarn($"{numBookSkipped} books skipped out of {numBooksProcessed} total ({percentSkipped:0.0}% skipped)");
+
+				string warningMessage = "Skipped Books:\n\t" + String.Join("\n\t", _skippedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
+				_logger.LogWarn(warningMessage);
+			}
+
 			if (_failedBooks != null && _failedBooks.Any())
 			{
 				isSuccess = false;
@@ -162,7 +174,7 @@ namespace BloomHarvester
 			return isSuccess;
 		}
 				
-		private bool ProcessOneBook(Book book)
+		private BookProcessingStatus ProcessOneBook(Book book)
 		{
 			bool isSuccessful = true;
 			try
@@ -172,13 +184,18 @@ namespace BloomHarvester
 				Console.Out.WriteLine(message);
 				_logger.LogVerbose(message);
 
-				var initialUpdates = new UpdateOperation();
-				initialUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.InProgress.ToString());
-				initialUpdates.UpdateField(Book.kHarvesterIdField, this.Identifier);
+				// Decide if we should process it.
+				if (ShouldSkipProcessing(book))
+				{
+					return BookProcessingStatus.Skipped;
+				}
 
+				// Parse DB initial updates
+				var initialUpdates = new UpdateOperation();
+				initialUpdates.UpdateField(Book.kHarvestStateField, Parse.Model.HarvestState.InProgress.ToString());
+				initialUpdates.UpdateField(Book.kHarvesterIdField, this.Identifier);
 				var startTime = new Parse.Model.Date(DateTime.UtcNow);
 				initialUpdates.UpdateField("harvestStartedAt", startTime.ToJson());
-
 				if (!_options.ReadOnly)
 				{
 					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, initialUpdates.ToJson());
@@ -194,17 +211,18 @@ namespace BloomHarvester
 
 				// Process the book
 				var finalUpdates = new UpdateOperation();
-				List<string> harvestLogEntries = CheckForMissingFontErrors(downloadBookDir, book);
+				List<BaseLogEntry> harvestLogEntries = CheckForMissingFontErrors(downloadBookDir, book);
 				bool anyFontsMissing = harvestLogEntries.Any();
 				isSuccessful &= !anyFontsMissing;
-				
+
+				// More processing
 				if (isSuccessful)
 				{
 					var warnings = FindBookWarnings(book);
 					harvestLogEntries.AddRange(warnings);
-					
+
 					if (_options.ReadOnly)
-						return isSuccessful;
+						return BookProcessingStatus.Success;
 
 					var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
 					var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
@@ -212,14 +230,15 @@ namespace BloomHarvester
 					isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath);
 				}
 
-				finalUpdates.UpdateField(Book.kHarvestLogField, Book.ToJson(harvestLogEntries));
+				// Finalize the state
+				finalUpdates.UpdateField(Book.kHarvestLogField, Book.ToJson(harvestLogEntries.Select(x => x.ToString())));
 				if (isSuccessful)
 				{
-					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Done.ToString());
+					finalUpdates.UpdateField(Book.kHarvestStateField, Parse.Model.HarvestState.Done.ToString());
 				}
 				else
 				{
-					finalUpdates.UpdateField(Book.kHarvestStateField, Book.HarvestState.Failed.ToString());
+					finalUpdates.UpdateField(Book.kHarvestStateField, Parse.Model.HarvestState.Failed.ToString());
 				}
 
 				// Write the updates
@@ -240,7 +259,7 @@ namespace BloomHarvester
 					try
 					{
 						var onErrorUpdates = new UpdateOperation();
-						onErrorUpdates.UpdateField(Book.kHarvestStateField, $"\"{Book.HarvestState.Failed.ToString()}\"");
+						onErrorUpdates.UpdateField(Book.kHarvestStateField, $"\"{Parse.Model.HarvestState.Failed.ToString()}\"");
 						onErrorUpdates.UpdateField(Book.kHarvesterIdField, this.Identifier);
 						_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, onErrorUpdates.ToJson());
 					}
@@ -251,7 +270,46 @@ namespace BloomHarvester
 				}
 			}
 
-			return isSuccessful;
+			return isSuccessful ? BookProcessingStatus.Success : BookProcessingStatus.Failed;
+		}
+
+		public bool ShouldSkipProcessing(Book book)
+		{
+			if (!Enum.TryParse(book.HarvestState, out Parse.Model.HarvestState state))
+			{
+				state = Parse.Model.HarvestState.Unknown;
+			}
+
+			// Always re-process these
+			if (state == Parse.Model.HarvestState.Unknown || state == Parse.Model.HarvestState.New || state == Parse.Model.HarvestState.Updated)
+			{
+				return false;
+			}
+
+			var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
+			if (logEntryList != null)
+			{
+				var previouslyMissingFontNames = logEntryList.Where(x => x is MissingFontError).Select(x => (x as MissingFontError).FontName);
+				var stillMissingFontNames = GetMissingFonts(previouslyMissingFontNames);
+
+				if (stillMissingFontNames.Any())
+				{
+					_logger.LogInfo($"Skipping processing of book {book.ObjectId} because missing font {stillMissingFontNames.First()}");
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		private IEnumerable<BaseLogEntry> GetValidBaseLogEntries(List<string> logEntryStrList)
+		{
+			if (logEntryStrList == null)
+			{
+				return null;
+			}
+
+			return logEntryStrList.Select(str => BaseLogEntry.ParseFromLogEntry(str)).Where(x => x != null);
 		}
 
 		// Precondition: Assumes that baseUrl is not URL-encoded, and that it ends with the book title as a subfolder.
@@ -285,9 +343,9 @@ namespace BloomHarvester
 		/// </summary>
 		/// <param name="book">The book to check</param>
 		/// <returns></returns>
-		private List<string> FindBookWarnings(Book book)
+		private List<BaseLogEntry> FindBookWarnings(Book book)
 		{
-			var warnings = new List<string>();
+			var warnings = new List<BaseLogEntry>();
 
 			if (book == null)
 			{
@@ -296,21 +354,21 @@ namespace BloomHarvester
 
 			if (String.IsNullOrWhiteSpace(book.BaseUrl))
 			{
-				warnings.Add("WARN: Missing baseUrl");
+				warnings.Add(new MissingBaseUrlWarning());
 			}
 
 			if (warnings.Any())
 			{
-				_logger.LogWarn("Warnings: " + String.Join(";", warnings));
+				_logger.LogWarn("Warnings: " + String.Join(";", warnings.Select(x => x.ToString())));
 			}
 
 			return warnings;
 		}
 
 		// Returns true if at least one font is missing
-		private List<string> CheckForMissingFontErrors(string bookPath, Book book)
+		private List<BaseLogEntry> CheckForMissingFontErrors(string bookPath, Book book)
 		{
-			var harvestLogEntries = new List<string>();
+			var harvestLogEntries = new List<BaseLogEntry>();
 
 			var missingFontsForCurrBook = GetMissingFonts(bookPath);
 			bool areAnyFontsMissing = missingFontsForCurrBook != null && missingFontsForCurrBook.Any();
@@ -321,7 +379,8 @@ namespace BloomHarvester
 
 				foreach (var missingFont in missingFontsForCurrBook)
 				{
-					harvestLogEntries.Add("Error: Missing font " + missingFont);
+					var logEntry = new LogEntries.MissingFontError(missingFont);
+					harvestLogEntries.Add(logEntry);
 					YouTrackIssueConnector.ReportMissingFontToYouTrack(missingFont, this.Identifier, book);
 				}
 			}
@@ -349,14 +408,22 @@ namespace BloomHarvester
 				}
 
 				var bookFontNames = GetFontsFromReportFile(reportFile.Path);
-				var computerFontNames = GetInstalledFontNames();
+				missingFonts = GetMissingFonts(bookFontNames);
+			}
 
-				foreach (var bookFontName in bookFontNames)
+			return missingFonts;
+		}
+
+		private List<string> GetMissingFonts(IEnumerable<string> bookFontNames)
+		{			
+			var computerFontNames = GetInstalledFontNames();
+
+			var missingFonts = new List<string>();
+			foreach (var bookFontName in bookFontNames)
+			{
+				if (!computerFontNames.Contains(bookFontName))
 				{
-					if (!computerFontNames.Contains(bookFontName))
-					{
-						missingFonts.Add(bookFontName);
-					}
+					missingFonts.Add(bookFontName);
 				}
 			}
 
@@ -538,17 +605,11 @@ namespace BloomHarvester
 			_s3UploadClient.UploadFile(epubPath, $"{s3FolderLocation}/epub");
 		}
 
-		private void HarvestWarnings()
+		enum BookProcessingStatus
 		{
-			var booksWithWarnings = _parseClient.GetBooksWithWarnings();
-
-			// ENHANCE: Currently this is just a dummy implementation to test that we can walk through it and check
-			//   One day we might actually want to re-process these if there is a code minor version update or something
-			foreach (var book in booksWithWarnings)
-			{
-				string message = $"{book.ObjectId ?? ""} ({book.BaseUrl}): {book.Warnings.Count} warnings.";
-				Console.Out.WriteLine(message);
-			}
+			Failed = 0,
+			Success = 1,
+			Skipped = 2
 		}
 	}
 }

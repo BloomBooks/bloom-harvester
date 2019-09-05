@@ -8,15 +8,17 @@ namespace BloomHarvester.Parse.Model
     [JsonObject(MemberSerialization = MemberSerialization.OptIn)]
     public class Book : ParseObject
     {
-        // TODO: There are many more properties from the book table that we could add when they are needed.
+		// TODO: There are many more properties from the book table that we could add when they are needed.
+		[JsonProperty("harvestState")]
+		public string HarvestState;
 
-        [JsonProperty("baseUrl")]
+		[JsonProperty("baseUrl")]
         public string BaseUrl;
 
-        [JsonProperty("warnings")]
-        public List<string> Warnings;
+        [JsonProperty("harvestLog")]
+		public List<string> HarvestLogEntries;
 
-        public const string kHarvestStateField = "harvestState";
+		public const string kHarvestStateField = "harvestState";
         public const string kHarvesterIdField = "harvesterId";
         public const string kHarvestLogField = "harvestLog";
 
@@ -24,16 +26,6 @@ namespace BloomHarvester.Parse.Model
         internal override string GetParseClassName()
         {
             return "books";
-        }
-
-        public enum HarvestState
-        {
-            Unknown,
-            New, // set by parse code when the user uploads a book
-            Updated, // set by parse code when the user re-uploads a book
-            InProgress,
-            Done,
-            Failed,
         }
     }
 }

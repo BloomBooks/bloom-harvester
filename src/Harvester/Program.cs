@@ -38,14 +38,10 @@ namespace BloomHarvester
 
 			try
 			{
-				parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions, HarvestWarningsOptions>(args)
+				parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
 					.WithParsed<HarvestAllOptions>(options =>
 					{
 						Harvester.RunHarvestAll(options);
-					})
-					.WithParsed<HarvestWarningsOptions>(options =>
-					{
-						Harvester.RunHarvestWarnings(options);
 					})
 					// TODO: Replace placeholders
 					.WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
@@ -119,10 +115,5 @@ namespace BloomHarvester
 	public class HarvestLowPriorityOptions : HarvesterCommonOptions
 	{
 		// PLACEHOLDER
-	}
-
-	[Verb("harvestWarnings", HelpText = "Re-run Harvester on items that currently have warnings.")]
-	public class HarvestWarningsOptions : HarvesterCommonOptions
-	{
 	}
 }

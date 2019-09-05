@@ -347,7 +347,7 @@ namespace BloomHarvester.Parse
 		{
 			var request = new RestRequest("classes/books", Method.GET);
 			SetCommonHeaders(request);
-			request.AddParameter("keys", "object_id,baseUrl");
+			request.AddParameter("keys", "object_id,baseUrl,harvestState,harvestLog");
 			
 			if (!String.IsNullOrEmpty(whereCondition))
 			{
@@ -357,22 +357,7 @@ namespace BloomHarvester.Parse
 			IEnumerable<Book> results = GetAllResults<Book>(request);
 			return results;
 		}
-		
-		/// <summary>
-		/// Gets all rows from the Parse "books" class/table that contain warnings
-		/// </summary>
-		internal IEnumerable<Book> GetBooksWithWarnings()
-		{
-			var request = new RestRequest("classes/books", Method.GET);
-			SetCommonHeaders(request);
-
-			// TODO: Debug why this doesn't work
-			//request.AddParameter("where", "{\"warnings\":{\"$ne\":\"[]\"}");
-
-			IEnumerable<Book> results = GetAllResults<Book>(request);
-			return results;
-		}
-
+				
 		/// <summary>
 		/// Lazily gets all the results from a Parse database in chunks
 		/// </summary>
