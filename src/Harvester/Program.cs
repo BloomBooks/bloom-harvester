@@ -17,13 +17,17 @@ namespace BloomHarvester
 		// Command line arguments sample: "harvestAll --environment=dev --parseDBEnvironment=prod"
 		//
 		// Some presets that you might copy and paste in:
-		// harvestAll --environment=dev --parseDBEnvironment=local --suppressLogs --count=2
-		// harvestWarnings --environment=dev --parseDBEnvironment=local --suppressLogs
-		// harvestAll --environment=dev --parseDBEnvironment=local --suppressLogs "--queryWhere={ \"objectId\":\"38WdeYJ0yF\"}"
-		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"objectId\":\"JUCL9OMOza\"}"
-		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$in\":[\"Vaccinations\",\"Fox and Frog\",\"The Moon and the Cap\"]}}"
-		// harvestAll --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"}}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
-		// harvestAll --environment=dev --parseDBEnvironment=prod --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"},\"tags\":\"bookshelf:Ministerio de Educación de Guatemala\"}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
+		// harvest --mode=all --environment=dev --parseDBEnvironment=local --suppressLogs --count=2
+		// harvest --mode=warnings --environment=dev --parseDBEnvironment=local --suppressLogs
+		// harvest --mode=all --environment=dev --parseDBEnvironment=local --suppressLogs "--queryWhere={ \"objectId\":\"38WdeYJ0yF\"}"
+		// harvest --mode=all --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"objectId\":\"JUCL9OMOza\"}"
+		// harvest --mode=all --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$in\":[\"Vaccinations\",\"Fox and Frog\",\"The Moon and the Cap\"]}}"
+		// harvest --mode=all --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"}}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
+		// harvest --mode=all --environment=dev --parseDBEnvironment=prod --suppressLogs "--queryWhere={ \"title\":{\"$regex\":\"^^A\"},\"tags\":\"bookshelf:Ministerio de Educación de Guatemala\"}"	// Note that the "^" in the regex apparently needed to be escaped with another "^" before it. Not sure why...
+		// harvest --mode=default --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"objectId\":{\"$in\":[\"ze17yO6jIm\",\"v4YABQJLB2\"]}}"
+		// harvest --mode=default --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"uploader\":{\"$in\":[\"SXsqpDHGKk\"]}}"
+		//
+		// updateState --parseDBEnvironment=dev --id="ze17yO6jIm" --newState="InProgress"
 		[STAThread]
 		public static void Main(string[] args)
 		{
@@ -38,14 +42,15 @@ namespace BloomHarvester
 
 			try
 			{
-				parser.ParseArguments<HarvestAllOptions, HarvestHighPriorityOptions, HarvestLowPriorityOptions>(args)
-					.WithParsed<HarvestAllOptions>(options =>
+				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions>(args)
+					.WithParsed<HarvesterOptions>(options =>
 					{
-						Harvester.RunHarvestAll(options);
+						Harvester.RunHarvest(options);
 					})
-					// TODO: Replace placeholders
-					.WithParsed<HarvestHighPriorityOptions>(options => { throw new NotImplementedException("HarvestHighPriority"); })
-					.WithParsed<HarvestLowPriorityOptions>(options => { throw new NotImplementedException("HarvestLowPriority"); })
+					.WithParsed<UpdateStateInParseOptions>(options =>
+					{
+						Harvester.UpdateHarvesterState(options.ParseDBEnvironment, options.ObjectId, options.NewState);
+					})
 					.WithNotParsed(errors =>
 					{
 						Console.Out.WriteLine("Error parsing command line arguments.");
@@ -60,8 +65,12 @@ namespace BloomHarvester
 		}
 	}
 
-	public abstract class HarvesterCommonOptions
+	[Verb("harvest", HelpText = "Updates the harvestState field in Parse")]
+	public class HarvesterOptions
 	{
+		[Option("mode", Required = true, HelpText = "Which mode to run Harvester in, e.g. \"Default\", \"All\", \"NewOrUpdatedOnly\"")]
+		public HarvestMode Mode { get; set; }
+
 		[Option('e', "environment", Required = false, Default = EnvironmentSetting.Dev, HelpText = "Sets all environments to read/write from. Valid values are Default, Dev, Test, or Prod. If any individual component's environment are set to non-default, that value will take precedence over this.")]
 		public EnvironmentSetting Environment { get; set; }
 
@@ -79,8 +88,10 @@ namespace BloomHarvester
 		public string QueryWhere { get; set; }
 
 		[Option("readOnly", Required = false, Default = false, HelpText = "If specified, harvester just downloads the books")]
-
 		public bool ReadOnly { get; set; }
+
+		[Option("count", Required = false, Default = -1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
+		public int Count { get; set; }
 
 		public virtual string GetPrettyPrint()
 		{
@@ -88,32 +99,21 @@ namespace BloomHarvester
 				$"parseDBEnvironment: {ParseDBEnvironment}\n" +
 				$"logEnvironment: {LogEnvironment}\n" +
 				$"suppressLogs: {SuppressLogs}\n" +
-				$"queryWhere: {QueryWhere}";
+				$"queryWhere: {QueryWhere}\n" +
+				$"count: {Count}"; ;
 		}
 	}
 
-	[Verb("harvestAll", HelpText = "Run Harvester on all books.")]
-	public class HarvestAllOptions  : HarvesterCommonOptions
+	[Verb("updateState", HelpText ="Updates the harvestState field in Parse")]
+	public class UpdateStateInParseOptions
 	{
-		[Option("count", Required = false, Default =-1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
-		public int Count { get; set; }
+		[Option("parseDBEnvironment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets the environment to read/write from Parse DB. Valid values are Default, Dev, Test, or Prod. If specified (to non-Default), takes precedence over the general 'environment' option.")]
+		public EnvironmentSetting ParseDBEnvironment { get; set; }
 
-		public override string GetPrettyPrint()
-		{
-			return base.GetPrettyPrint() + "\n" +
-				$"count: {Count}";
-		}
-	}
+		[Option("id", Required = true, HelpText = "The objectId of the item to update.")]
+		public string ObjectId { get; set; }
 
-	[Verb("harvestHighPriority", HelpText = "Run Harvester on high-priority items.")]
-	public class HarvestHighPriorityOptions : HarvesterCommonOptions
-	{
-		// PLACEHOLDER
-	}
-
-	[Verb("harvestLowPriority", HelpText = "Run Harvester on low-priority items.")]
-	public class HarvestLowPriorityOptions : HarvesterCommonOptions
-	{
-		// PLACEHOLDER
+		[Option("newState", Required = true, HelpText = "The new state to set it to")]
+		public Parse.Model.HarvestState NewState { get; set; }
 	}
 }

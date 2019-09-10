@@ -27,18 +27,21 @@ namespace BloomHarvester
 		private ParseClient _parseClient;
 		private BookTransfer _transfer;
 		private HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
-		private HarvesterCommonOptions _options;
+		private HarvesterOptions _options;
 		private List<Book> _failedBooks = new List<Book>();
 		private List<Book> _skippedBooks = new List<Book>();
 		private HashSet<string> _missingFonts = new HashSet<string>();
+		internal Version Version;
 
 		internal bool IsDebug { get; set; }
 		public string Identifier { get; set; }
 
 
-		public Harvester(HarvesterCommonOptions options)
+		public Harvester(HarvesterOptions options)
 		{
 			_options = options;
+			this.Version = System.Reflection.Assembly.GetEntryAssembly()?.GetName()?.Version ?? new Version(0, 0);
+
 			// Note: If the same machine runs multiple BloomHarvester processes, then you need to add a suffix to this.
 			this.Identifier = Environment.MachineName;
 
@@ -89,23 +92,23 @@ namespace BloomHarvester
 			_logger.Dispose();
 		}
 
-		public static void RunHarvestAll(HarvestAllOptions options)
+		public static void RunHarvest(HarvesterOptions options)
 		{
 			Console.Out.WriteLine("Command Line Options: \n" + options.GetPrettyPrint());
 
 			using (Harvester harvester = new Harvester(options))
 			{
-				harvester.HarvestAll(maxBooksToProcess: options.Count, queryWhereJson: options.QueryWhere);
+				harvester.Harvest(maxBooksToProcess: options.Count, queryWhereJson: options.QueryWhere);
 			}
 		}
 
 		/// <summary>
 		/// Process all rows in the books table
-		/// Public interface should use RunHarvestAll() function instead. (So that we can guarantee that the class instance is properly disposed).
+		/// Public interface should use RunHarvest() function instead. (So that we can guarantee that the class instance is properly disposed).
 		/// </summary>
 		/// 
 		/// <param name="maxBooksToProcess"></param>
-		private bool HarvestAll(int maxBooksToProcess = -1, string queryWhereJson = "")
+		private bool Harvest(int maxBooksToProcess = -1, string queryWhereJson = "")
 		{
 			_logger.TrackEvent("HarvestAll Start");
 			var methodStopwatch = new Stopwatch();
@@ -152,8 +155,6 @@ namespace BloomHarvester
 			if (_skippedBooks != null && _skippedBooks.Any())
 			{
 				isSuccess = false;
-				double percentSkipped = ((double)numBookSkipped / numBooksProcessed * 100);
-				_logger.LogWarn($"{numBookSkipped} books skipped out of {numBooksProcessed} total ({percentSkipped:0.0}% skipped)");
 
 				string warningMessage = "Skipped Books:\n\t" + String.Join("\n\t", _skippedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
 				_logger.LogWarn(warningMessage);
@@ -162,12 +163,20 @@ namespace BloomHarvester
 			if (_failedBooks != null && _failedBooks.Any())
 			{
 				isSuccess = false;
-				double percentFailed = ((double)numBooksFailed) / numBooksProcessed * 100;
-				_logger.LogError($"Errors encounted: {numBooksFailed} books failed out of {numBooksProcessed} total ({percentFailed:0.0}% failed)");
 				
 				string errorMessage = "Books with errors:\n\t" + String.Join("\n\t", _failedBooks.Select(x => $"ObjectId: {x.ObjectId}.  URL: {x.BaseUrl}"));
 				_logger.LogError(errorMessage);
 			}
+
+			double percentSkipped = ((double)numBookSkipped / numBooksProcessed * 100);
+			_logger.LogWarn($"{numBookSkipped} books skipped out of {numBooksProcessed} total ({percentSkipped:0.0}% skipped)");
+
+			double percentFailed = ((double)numBooksFailed) / numBooksProcessed * 100;
+			_logger.LogError($"Errors encounted: {numBooksFailed} books failed out of {numBooksProcessed} total ({percentFailed:0.0}% failed)");
+
+			int numBooksSuccess = numBooksProcessed - numBooksFailed - numBookSkipped;
+			double percentSuccess = ((double)numBooksSuccess) / numBooksProcessed * 100;
+			_logger.LogInfo($"Success: {numBooksSuccess} processed sucessfully out of {numBooksProcessed} total ({percentSuccess:0.0}% success)");
 
 			_logger.TrackEvent("HarvestAll End");
 
@@ -185,8 +194,9 @@ namespace BloomHarvester
 				_logger.LogVerbose(message);
 
 				// Decide if we should process it.
-				if (ShouldSkipProcessing(book))
+				if (!ShouldProcessBook(book))
 				{
+					_logger.LogVerbose($"Skipping book {book.ObjectId}.");
 					return BookProcessingStatus.Skipped;
 				}
 
@@ -194,6 +204,7 @@ namespace BloomHarvester
 				var initialUpdates = new UpdateOperation();
 				initialUpdates.UpdateField(Book.kHarvestStateField, Parse.Model.HarvestState.InProgress.ToString());
 				initialUpdates.UpdateField(Book.kHarvesterIdField, this.Identifier);
+				initialUpdates.UpdateField(Book.kHarvesterVersionField, Version.ToString());
 				var startTime = new Parse.Model.Date(DateTime.UtcNow);
 				initialUpdates.UpdateField("harvestStartedAt", startTime.ToJson());
 				if (!_options.ReadOnly)
@@ -273,33 +284,118 @@ namespace BloomHarvester
 			return isSuccessful ? BookProcessingStatus.Success : BookProcessingStatus.Failed;
 		}
 
-		public bool ShouldSkipProcessing(Book book)
+		/// <summary>
+		/// Determines whether or not a book should be processed by the current harvester
+		/// </summary>
+		/// <param name="book"></param>
+		/// <returns>Returns true if the book should be processed</returns>
+		public bool ShouldProcessBook(Book book)
 		{
+			Debug.Assert(book != null, "ShouldProcessBook(): Book was null");
+
 			if (!Enum.TryParse(book.HarvestState, out Parse.Model.HarvestState state))
 			{
 				state = Parse.Model.HarvestState.Unknown;
 			}
-
-			// Always re-process these
-			if (state == Parse.Model.HarvestState.Unknown || state == Parse.Model.HarvestState.New || state == Parse.Model.HarvestState.Updated)
+			bool isNewOrUpdatedState = (state == Parse.Model.HarvestState.New || state == Parse.Model.HarvestState.Updated);
+			bool isStaleState = false;
+			if (state == Parse.Model.HarvestState.InProgress)
 			{
-				return false;
-			}
-
-			var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
-			if (logEntryList != null)
-			{
-				var previouslyMissingFontNames = logEntryList.Where(x => x is MissingFontError).Select(x => (x as MissingFontError).FontName);
-				var stillMissingFontNames = GetMissingFonts(previouslyMissingFontNames);
-
-				if (stillMissingFontNames.Any())
+				// In general, we just skip and let whoever else is working on it do its thing to avoid any potential for getting into strange states.
+				// But if it's been "InProgress" for a suspiciously long time, it seems like it might've crashed. In that case, consider processing it.
+				TimeSpan timeDifference = DateTime.UtcNow - book.HarvestStartedAt.UtcTime;
+				if (timeDifference.TotalDays < 2)
 				{
-					_logger.LogInfo($"Skipping processing of book {book.ObjectId} because missing font {stillMissingFontNames.First()}");
-					return true;
+					return false;
+				}
+				else
+				{
+					isStaleState = true;
 				}
 			}
 
-			return false;
+
+			if (_options.Mode == HarvestMode.All)
+			{
+				// If settings say to process all books, this is easy. We always return true.
+				return true;
+			}
+			else if (_options.Mode == HarvestMode.NewOrUpdatedOnly)
+			{
+				return isNewOrUpdatedState;
+			}
+			else if (_options.Mode == HarvestMode.RetryFailuresOnly)
+			{
+				var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
+				bool containsAnyErrors = logEntryList != null && logEntryList.Any();
+				return containsAnyErrors;
+			}
+			else if (_options.Mode == HarvestMode.Default)
+			{
+
+				Version previouslyUsedVersion = new Version(!String.IsNullOrEmpty(book.HarvesterVersion) ? book.HarvesterVersion : "0.0");
+				if (this.Version > previouslyUsedVersion)
+				{
+					// This is a newer version than what we used previously
+					// We should always re-process it.
+					return true;
+				}
+				else if (this.Version == previouslyUsedVersion)
+				{
+					// This is the same version
+					// We generally don't need to re-process it if we'll get the same result
+
+					switch (state)
+					{
+						case Parse.Model.HarvestState.Done:
+							return false;
+						case Parse.Model.HarvestState.New:
+						case Parse.Model.HarvestState.Updated:
+						case Parse.Model.HarvestState.Unknown:
+						default:
+							return true;
+						case Parse.Model.HarvestState.InProgress:
+							// Generally we retun false in this case, although if it's stuck in InProgress for what seems like an unreasonably long time, then go ahead and process it.
+							return isStaleState;
+						case Parse.Model.HarvestState.Failed:
+							// Default to true (re-try failures), unless we have reason to think that it's still pretty hopeless for the book to succeed.
+							var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
+							if (logEntryList != null)
+							{
+								var previouslyMissingFontNames = logEntryList.Where(x => x is MissingFontError).Select(x => (x as MissingFontError).FontName);
+
+								if (previouslyMissingFontNames.Any())
+								{
+									var stillMissingFontNames = GetMissingFonts(previouslyMissingFontNames);
+
+									if (stillMissingFontNames.Any())
+									{
+										_logger.LogInfo($"Skipping processing of book {book.ObjectId} because missing font {stillMissingFontNames.First()}");
+										return false;
+									}
+									else
+									{
+										return true;
+									}
+								}
+							}
+
+							return true;
+					}
+				}
+				else
+				{
+					// This is an older version than what we used previously
+					// Generally we don't want to touch this, except if the book was newly updated... we should still do our best.
+					// Note that even if the state is marked failed, we don't want to re-try it... a newer version could mark it failed for a reason that this older version doesn't understand yet.
+					return isNewOrUpdatedState || isStaleState;
+				}
+			}
+			else
+			{
+				Debug.Assert(false, "ShouldProcessBook(): Unexpected mode: " + _options.Mode);
+				return true;
+			}
 		}
 
 		private IEnumerable<BaseLogEntry> GetValidBaseLogEntries(List<string> logEntryStrList)
@@ -603,6 +699,26 @@ namespace BloomHarvester
 		{
 			_logger.TrackEvent("Upload .epub");
 			_s3UploadClient.UploadFile(epubPath, $"{s3FolderLocation}/epub");
+		}
+
+		/// <summary>
+		/// This function is here to allow setting the harvesterState to specific values to aid in setting up specific ad-hoc testing states.
+		/// In the Parse database, there are some rules that automatically set the harvestState to "Updated" when the book is newly published.
+		/// Unfortunately, this rule also kicks in when a book is modified in the Parse dashboard or via the API Console :(
+		/// 
+		/// But executing this function allows you to set it to a value other than "Updated"
+		/// </summary>
+		internal static void UpdateHarvesterState(EnvironmentSetting parseDbEnvironment, string objectId, Parse.Model.HarvestState newState)
+		{
+			var updateOp = new UpdateOperation();
+			updateOp.UpdateField(Book.kHarvestStateField, newState.ToString());
+
+			EnvironmentSetting environment = EnvironmentUtils.GetEnvOrFallback(parseDbEnvironment, EnvironmentSetting.Default);
+			var parseClient = new ParseClient(environment);
+			parseClient.UpdateObject(Book.GetStaticParseClassName(), objectId, updateOp.ToJson());
+			parseClient.FlushBatchableOperations();
+
+			Console.Out.WriteLine($"Evnironment={parseDbEnvironment}: Sent request to update object \"{objectId}\" with harvestState={newState}");
 		}
 
 		enum BookProcessingStatus

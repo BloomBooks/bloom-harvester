@@ -347,7 +347,7 @@ namespace BloomHarvester.Parse
 		{
 			var request = new RestRequest("classes/books", Method.GET);
 			SetCommonHeaders(request);
-			request.AddParameter("keys", "object_id,baseUrl,harvestState,harvestLog");
+			request.AddParameter("keys", "object_id,baseUrl,harvestState,harvesterVersion,harvestLog,harvestStartedAt");
 			
 			if (!String.IsNullOrEmpty(whereCondition))
 			{

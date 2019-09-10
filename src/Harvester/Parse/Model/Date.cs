@@ -9,6 +9,8 @@ namespace BloomHarvester.Parse.Model
 	[JsonObject]
 	public class Date
 	{
+		private const string kDateFormat = "yyyy-MM-ddTHH:mm:ss.fffK";
+
 		// Constructor
 		public Date(DateTime dateTime)
 		{
@@ -17,7 +19,24 @@ namespace BloomHarvester.Parse.Model
 
 		// Fields and Properties
 		public string __type = "Date";
-		public string iso;
+
+		private string _iso;
+		[JsonProperty("iso")]
+		public string Iso
+		{
+			get
+			{
+				return _iso;
+			}
+
+			set
+			{
+				_iso = value;
+				_utcTime = DateTime.ParseExact(value, kDateFormat, System.Globalization.CultureInfo.InvariantCulture);
+			}
+		}
+
+
 
 		private DateTime _utcTime;
 		[JsonIgnore]
@@ -32,7 +51,7 @@ namespace BloomHarvester.Parse.Model
 			{
 				_utcTime = value.ToUniversalTime();
 
-				iso = _utcTime.ToString("yyyy-MM-ddTHH:mm:ss.fffK");
+				_iso = _utcTime.ToString(kDateFormat);
 			}
 		}
 
