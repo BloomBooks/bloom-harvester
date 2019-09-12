@@ -5,8 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Web;
-using Bloom;
-using Bloom.Collection;
 using Bloom.WebLibraryIntegration;
 using BloomHarvester.LogEntries;
 using BloomHarvester.Logger;
@@ -40,7 +38,8 @@ namespace BloomHarvester
 		public Harvester(HarvesterOptions options)
 		{
 			_options = options;
-			this.Version = System.Reflection.Assembly.GetEntryAssembly()?.GetName()?.Version ?? new Version(0, 0);
+			var assemblyVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName()?.Version ?? new Version(0, 0);
+			this.Version = new Version(assemblyVersion.Major, assemblyVersion.Minor);	// Only consider the major and minor version
 
 			// Note: If the same machine runs multiple BloomHarvester processes, then you need to add a suffix to this.
 			this.Identifier = Environment.MachineName;
@@ -81,7 +80,7 @@ namespace BloomHarvester
 			_transfer = new BookTransfer(_parseClient,
 				bloomS3Client: new HarvesterS3Client(downloadBucketName, parseDBEnvironment, true),
 				htmlThumbnailer: null,
-				bookDownloadStartingEvent: new BookDownloadStartingEvent());
+				bookDownloadStartingEvent: new Bloom.BookDownloadStartingEvent());
 
 			_s3UploadClient = new HarvesterS3Client(uploadBucketName, parseDBEnvironment, false);
 		}
@@ -120,7 +119,6 @@ namespace BloomHarvester
 
 			IEnumerable<Book> bookList = _parseClient.GetBooks(queryWhereJson);
 
-			CollectionSettings.HarvesterMode = true;
 			foreach (var book in bookList)
 			{
 				var status = ProcessOneBook(book);
@@ -182,6 +180,46 @@ namespace BloomHarvester
 
 			return isSuccess;
 		}
+
+		internal string GetQueryWhereOptimizations()
+		{
+			switch (_options.Mode)
+			{
+				case HarvestMode.All:
+					return "";
+				case HarvestMode.Default:
+				default:
+					return "harvesterMajorVersion ";
+			}
+
+			return "";
+		}
+		internal static string InsertQueryWhereOptimizations(string userInputQueryWhere, string whereOptimization)
+		{
+			string combinedJson = "{" + whereOptimization + "}";
+
+			if (String.IsNullOrWhiteSpace(userInputQueryWhere) || userInputQueryWhere == "{}" || userInputQueryWhere == "{ }")
+			{
+				return combinedJson;
+			}
+
+			int lastCloseBraceIndex = userInputQueryWhere.LastIndexOf("}");
+			if (lastCloseBraceIndex < 0)
+			{
+				return combinedJson;
+			}
+
+			int index = lastCloseBraceIndex - 1;
+			while (index >= 0 && Char.IsWhiteSpace(userInputQueryWhere[index]))
+			{
+				--index;
+			}
+
+			string prefix = userInputQueryWhere.Substring(0, index + 1);
+			string suffix = userInputQueryWhere.Substring(index + 1);
+			combinedJson = $"{prefix}, {whereOptimization}{suffix}";
+			return combinedJson;
+		}
 				
 		private BookProcessingStatus ProcessOneBook(Book book)
 		{
@@ -194,9 +232,11 @@ namespace BloomHarvester
 				_logger.LogVerbose(message);
 
 				// Decide if we should process it.
-				if (!ShouldProcessBook(book))
+				bool shouldBeProcessed = ShouldProcessBook(book, out string reason);
+				_logger.LogInfo($"{book.ObjectId} - {reason}");
+
+				if (shouldBeProcessed)
 				{
-					_logger.LogVerbose($"Skipping book {book.ObjectId}.");
 					return BookProcessingStatus.Skipped;
 				}
 
@@ -284,12 +324,18 @@ namespace BloomHarvester
 			return isSuccessful ? BookProcessingStatus.Success : BookProcessingStatus.Failed;
 		}
 
+		private bool ShouldProcessBook(Book book, out string reason)
+		{
+			return ShouldProcessBook(book, _options.Mode, this.Version, out reason);
+		}
+
 		/// <summary>
 		/// Determines whether or not a book should be processed by the current harvester
 		/// </summary>
 		/// <param name="book"></param>
+		/// <param name="reason">If the method returns true, then reason must be assigned with an explanation of why the book was selected for processing</param>
 		/// <returns>Returns true if the book should be processed</returns>
-		public bool ShouldProcessBook(Book book)
+		public static bool ShouldProcessBook(Book book, HarvestMode harvestMode, Version currentVersion, out string reason)
 		{
 			Debug.Assert(book != null, "ShouldProcessBook(): Book was null");
 
@@ -298,6 +344,9 @@ namespace BloomHarvester
 				state = Parse.Model.HarvestState.Unknown;
 			}
 			bool isNewOrUpdatedState = (state == Parse.Model.HarvestState.New || state == Parse.Model.HarvestState.Updated);
+
+			// This is an important exception-to-the-rule case for almost every scenario,
+			// so let's get it out of the way first.
 			bool isStaleState = false;
 			if (state == Parse.Model.HarvestState.InProgress)
 			{
@@ -306,6 +355,7 @@ namespace BloomHarvester
 				TimeSpan timeDifference = DateTime.UtcNow - book.HarvestStartedAt.UtcTime;
 				if (timeDifference.TotalDays < 2)
 				{
+					reason = "SKIP: Recently in progress";
 					return false;
 				}
 				else
@@ -315,49 +365,103 @@ namespace BloomHarvester
 			}
 
 
-			if (_options.Mode == HarvestMode.All)
+			if (harvestMode == HarvestMode.All)
 			{
 				// If settings say to process all books, this is easy. We always return true.
+				reason = "PROCESS: Mode = HarvestAll";
 				return true;
 			}
-			else if (_options.Mode == HarvestMode.NewOrUpdatedOnly)
+			else if (harvestMode == HarvestMode.NewOrUpdatedOnly)
 			{
-				return isNewOrUpdatedState;
-			}
-			else if (_options.Mode == HarvestMode.RetryFailuresOnly)
-			{
-				var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
-				bool containsAnyErrors = logEntryList != null && logEntryList.Any();
-				return containsAnyErrors;
-			}
-			else if (_options.Mode == HarvestMode.Default)
-			{
-
-				Version previouslyUsedVersion = new Version(!String.IsNullOrEmpty(book.HarvesterVersion) ? book.HarvesterVersion : "0.0");
-				if (this.Version > previouslyUsedVersion)
+				if (isNewOrUpdatedState)
 				{
-					// This is a newer version than what we used previously
-					// We should always re-process it.
+					reason = "PROCESS: New or Updated state";
 					return true;
 				}
-				else if (this.Version == previouslyUsedVersion)
+				else
 				{
-					// This is the same version
-					// We generally don't need to re-process it if we'll get the same result
+					reason = "SKIP: Not new or updated.";
+					return false;
+				}
+			}
+			else if (harvestMode == HarvestMode.RetryFailuresOnly)
+			{
+				Version previouslyUsedVersion = new Version(book.HarvesterMajorVersion, book.HarvesterMinorVersion);
+				if (previouslyUsedVersion > currentVersion)
+				{
+					// A newer version previously marked it as failed. Don't touch this book.
+					reason = "SKIP: Previously procesed by newer version.";
+					return false;
+				}
+				else
+				{
+					// This version is newer or same version as what previously processed this book. Give the book another try.
+					// Note that in RetryFailures mode, we will retry failures if the version is the same, whereas in Default mode we won't retry failures matching the current version.
+					var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
+					bool containsAnyErrors = logEntryList != null && logEntryList.Any();
 
-					switch (state)
+					if (containsAnyErrors)
 					{
-						case Parse.Model.HarvestState.Done:
-							return false;
-						case Parse.Model.HarvestState.New:
-						case Parse.Model.HarvestState.Updated:
-						case Parse.Model.HarvestState.Unknown:
-						default:
+						reason = "PROCESS: Retrying failures.";
+						return true;
+					}
+					else
+					{
+						reason = "SKIP: No failures.";
+						return false;
+					}
+				}
+			}
+			else if (harvestMode == HarvestMode.Default)
+			{
+
+				Version previouslyUsedVersion = new Version(book.HarvesterMajorVersion, book.HarvesterMinorVersion);
+				switch (state)
+				{
+					case Parse.Model.HarvestState.New:
+					case Parse.Model.HarvestState.Updated:
+					case Parse.Model.HarvestState.Unknown:
+					default:
+						reason = "PROCESS: New or Updated state";
+						return true;
+					case Parse.Model.HarvestState.Done:
+						if (currentVersion.Major > book.HarvesterMajorVersion)
+						{
+							reason = "PROCESS: Updated major version, so updating output";
 							return true;
-						case Parse.Model.HarvestState.InProgress:
-							// Generally we retun false in this case, although if it's stuck in InProgress for what seems like an unreasonably long time, then go ahead and process it.
-							return isStaleState;
-						case Parse.Model.HarvestState.Failed:
+						}
+						else
+						{
+							reason = "SKIP: Already processed succesfully.";
+							return false;
+						}
+					case Parse.Model.HarvestState.InProgress:
+						if (!isStaleState)
+						{
+							reason = "SKIP: Recently in progress";
+							return false;
+						}
+						else if (currentVersion > previouslyUsedVersion)
+						{
+							reason = "PROCESS: Retrying stuck book of older version.";
+							return true;
+						}
+						else if (currentVersion == previouslyUsedVersion)
+						{
+							reason = "PROCESS: Retrying stuck book of current version.";
+							return true;
+						}
+						else
+						{
+							reason = "SKIP: Skipping stuck book that was previously processed by a newer version.";
+							return false;
+						}
+					case Parse.Model.HarvestState.Failed:
+						if (currentVersion > previouslyUsedVersion)
+						{
+							// TODO: Move or get rid of this looking for missing fonts code.
+
+							// Current is at least a minor version newer than what we had before
 							// Default to true (re-try failures), unless we have reason to think that it's still pretty hopeless for the book to succeed.
 							var logEntryList = GetValidBaseLogEntries(book.HarvestLogEntries);
 							if (logEntryList != null)
@@ -370,35 +474,33 @@ namespace BloomHarvester
 
 									if (stillMissingFontNames.Any())
 									{
-										_logger.LogInfo($"Skipping processing of book {book.ObjectId} because missing font {stillMissingFontNames.First()}");
+										reason = $"SKIP: Still missing font {stillMissingFontNames.First()}";
 										return false;
-									}
-									else
-									{
-										return true;
 									}
 								}
 							}
 
+							reason = "PROCESS: Retry-ing failed book of older version.";
 							return true;
-					}
-				}
-				else
-				{
-					// This is an older version than what we used previously
-					// Generally we don't want to touch this, except if the book was newly updated... we should still do our best.
-					// Note that even if the state is marked failed, we don't want to re-try it... a newer version could mark it failed for a reason that this older version doesn't understand yet.
-					return isNewOrUpdatedState || isStaleState;
+						}
+						else if (currentVersion == previouslyUsedVersion)
+						{
+							reason = "SKIP: Marked as failed by current version.";
+							return false;
+						}
+						{
+							reason = "SKIP: Marked as failed by newer version.";
+							return false;
+						}
 				}
 			}
 			else
 			{
-				Debug.Assert(false, "ShouldProcessBook(): Unexpected mode: " + _options.Mode);
-				return true;
+				throw new ArgumentException("Unexpected mode: " + harvestMode);
 			}
 		}
 
-		private IEnumerable<BaseLogEntry> GetValidBaseLogEntries(List<string> logEntryStrList)
+		private static IEnumerable<BaseLogEntry> GetValidBaseLogEntries(List<string> logEntryStrList)
 		{
 			if (logEntryStrList == null)
 			{
@@ -510,7 +612,7 @@ namespace BloomHarvester
 			return missingFonts;
 		}
 
-		private List<string> GetMissingFonts(IEnumerable<string> bookFontNames)
+		private static List<string> GetMissingFonts(IEnumerable<string> bookFontNames)
 		{			
 			var computerFontNames = GetInstalledFontNames();
 
@@ -549,7 +651,7 @@ namespace BloomHarvester
 		}
 
 		// Returns the names of each of the installed font families as a set of strings
-		private HashSet<string> GetInstalledFontNames()
+		private static HashSet<string> GetInstalledFontNames()
 		{
 			var installedFontCollection = new System.Drawing.Text.InstalledFontCollection();
 
@@ -703,7 +805,7 @@ namespace BloomHarvester
 
 		/// <summary>
 		/// This function is here to allow setting the harvesterState to specific values to aid in setting up specific ad-hoc testing states.
-		/// n the Parse database, there are some rules that automatically set the harvestState to "Updated" when the book is republished.
+		/// In the Parse database, there are some rules that automatically set the harvestState to "Updated" when the book is republished.
 		/// Unfortunately, this rule also kicks in when a book is modified in the Parse dashboard or via the API Console (if no updateSource is set) :(
 		/// 
 		/// But executing this function allows you to set it to a value other than "Updated"

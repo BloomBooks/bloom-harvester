@@ -22,12 +22,18 @@ namespace BloomHarvester.Parse.Model
 		public string HarvestState;
 
 		/// <summary>
-		/// Represents the version of the last Harvester instance that attempted to process this book.
-		/// The assembly version should be updated at least every time something changes in how books are processed. Or, once every check-in would work too.
-		/// However, when the version is updated, almost every book will be reprocessed, so updating it too much may result in unnecessary re-processing of books.
+		/// Represents the major version number of the last Harvester instance that attempted to process this book.
+		/// If the major version changes, then we will redo processing even of books that succeeded.
 		/// </summary>
-		[JsonProperty("harvesterVersion")]
-		public string HarvesterVersion;
+		[JsonProperty("harvesterMajorVersion")]
+		public int HarvesterMajorVersion;
+
+		/// <summary>
+		/// Represents the minor version number of the last Harvester instance that attempted to process this book.
+		/// If the minor version is updated, then we will redo processing of books that failed
+		/// </summary>
+		[JsonProperty("harvesterMinorVersion")]
+		public int HarvesterMinorVersion;
 
 		/// <summary>
 		/// The timestamp of the last time Harvester started processing this book
