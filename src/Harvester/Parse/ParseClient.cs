@@ -401,9 +401,11 @@ namespace BloomHarvester.Parse
 
 				numProcessed += currentResultCount;
 
-				string message = $"GetAllResults Progress: {numProcessed} out of {totalCount}.";
-				Console.Out.WriteLine(message);
-				Logger?.LogVerbose(message);
+				if (numProcessed < totalCount)
+				{
+					string message = $"GetAllResults Rows Retrieved: {numProcessed} out of {totalCount}.";
+					Logger?.LogVerbose(message);
+				}
 			}
 			while (numProcessed < totalCount);
 		}
