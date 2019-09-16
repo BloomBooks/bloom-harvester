@@ -97,6 +97,9 @@ namespace BloomHarvester
 		[Option("count", Required = false, Default = -1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
 		public int Count { get; set; }
 
+		[Option("loop", Required = false, Default = false, HelpText = "If true, will keep re-running Harvester after it finishes.")]
+		public bool Loop{ get; set; }
+
 		public virtual string GetPrettyPrint()
 		{
 			return $"mode: {Mode}\n" +
