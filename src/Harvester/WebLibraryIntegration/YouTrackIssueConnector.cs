@@ -116,9 +116,6 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 			}
 
 			ReportToYouTrack(_youTrackProjectKeyMissingFonts, summary, description, description, exitImmediately: false);
-		}
-		
-
-		
+		}		
 	}
 }

@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace BloomHarvester.Parse.Model
+﻿namespace BloomHarvester.Parse.Model
 {
 	public enum HarvestState
 	{
@@ -14,5 +8,6 @@ namespace BloomHarvester.Parse.Model
 		InProgress,
 		Done,
 		Failed,
+		Aborted
 	}
 }

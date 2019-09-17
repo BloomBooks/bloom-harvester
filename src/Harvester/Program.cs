@@ -36,7 +36,6 @@ namespace BloomHarvester
 		public static void Main(string[] args)
 		{
 			// See https://github.com/commandlineparser/commandline for documentation about CommandLine.Parser
-
 			var parser = new CommandLine.Parser((settings) =>
 			{
 				settings.CaseInsensitiveEnumValues = true;
