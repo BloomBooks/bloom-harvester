@@ -565,7 +565,7 @@ namespace BloomHarvester
 						}
 						else
 						{
-							reason = "SKIP: Already processed succesfully.";
+							reason = "SKIP: Already processed successfully.";
 							return false;
 						}
 					case Parse.Model.HarvestState.Aborted:

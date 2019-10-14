@@ -33,11 +33,25 @@ namespace BloomHarvester
 					new XElement("Language1Iso639Code", new XText(Language1Code)),
 					new XElement("Language2Iso639Code", new XText(Language2Code)),
 					new XElement("Language3Iso639Code", new XText(Language3Code)),
-					new XElement("BrandingProjectName", new XText(Branding??"")));
+					new XElement("Language1Name", new XText(GetLanguageDisplayName(metaObj, Language1Code) ?? "")),
+					new XElement("Language2Name", new XText(GetLanguageDisplayName(metaObj, Language2Code) ?? "")),
+					new XElement("Language3Name", new XText(GetLanguageDisplayName(metaObj, Language3Code) ?? "")),
+					new XElement("BrandingProjectName", new XText(Branding ?? "")));
 			var sb = new StringBuilder();
 			using (var writer = XmlWriter.Create(sb))
 				bloomCollectionElement.WriteTo(writer);
 			BloomCollection = sb.ToString();
+		}
+
+		private string GetLanguageDisplayName(dynamic metadata, string isoCode)
+		{
+			if (string.IsNullOrEmpty(isoCode))
+				return null;
+
+			if (metadata.IsDefined("language-display-names") && metadata["language-display-names"].IsDefined(isoCode))
+				return metadata["language-display-names"][isoCode];
+
+			return null;
 		}
 
 		/// <summary>
