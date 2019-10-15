@@ -38,7 +38,10 @@ namespace BloomHarvester
 					new XElement("Language1Iso639Code", new XText(Language1Code)),
 					new XElement("Language2Iso639Code", new XText(Language2Code)),
 					new XElement("Language3Iso639Code", new XText(Language3Code)),
-					new XElement("BrandingProjectName", new XText(Branding??"")));
+					new XElement("BrandingProjectName", new XText(Branding ?? "")),
+					// We want Bloom to treat our publications as modifications of the original, not adaptations.
+					// This, at least, prevents getting the "Adapted from..." statement on the credits page.
+					new XElement("IsSourceCollection", new XText("True")));
 			var sb = new StringBuilder();
 			using (var writer = XmlWriter.Create(sb))
 				bloomCollectionElement.WriteTo(writer);
