@@ -10,8 +10,10 @@ using Bloom.WebLibraryIntegration;
 using BloomHarvester.LogEntries;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
+using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomTemp;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Book = BloomHarvester.Parse.Model.Book;
 
@@ -412,6 +414,8 @@ namespace BloomHarvester
 					var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
 
 					isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book.ObjectId);
+					if (isSuccessful)
+						UpdateSuitabilityofArtifacts(book, analyzer);
 				}
 
 				// Finalize the state
@@ -419,6 +423,7 @@ namespace BloomHarvester
 				if (isSuccessful)
 				{
 					finalUpdates.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.Done.ToString());
+					finalUpdates.UpdateFieldWithJson(Book.kShow, JsonConvert.SerializeObject(book.Show));
 				}
 				else
 				{
@@ -463,6 +468,15 @@ namespace BloomHarvester
 			}
 
 			return isSuccessful;
+		}
+
+		private void UpdateSuitabilityofArtifacts(Book book, BookAnalyzer analyzer)
+		{
+			book.SetHarvesterEvaluation("epub", analyzer.IsEpubSuitable());
+			book.SetHarvesterEvaluation("pdf", true);
+			var isBloomReaderGood = analyzer.IsBloomReaderSuitable();
+			book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
+			book.SetHarvesterEvaluation("readOnline", isBloomReaderGood);
 		}
 
 		private bool ShouldProcessBook(Book book, out string reason)
@@ -827,7 +841,6 @@ namespace BloomHarvester
 					string bloomArguments = $"createArtifacts \"--bookPath={downloadBookDir}\" \"--collectionPath={collectionFilePath}\" \"--bloomdOutputPath={zippedBloomDOutputPath}\" \"--bloomDigitalOutputPath={folderForUnzipped.FolderPath}\" \"--epubOutputPath={epubOutputPath}\"";
 
 					// Start a Bloom command line in a separate process
-					_logger.LogVerbose("Starting Bloom CLI process");
 					var bloomCliStopwatch = new Stopwatch();
 					bloomCliStopwatch.Start();
 					bool exitedNormally = StartAndWaitForBloomCli(bloomArguments, kCreateArtifactsTimeoutSecs * 1000, out int bloomExitCode, out string bloomStdOut, out string bloomStdErr);
@@ -882,8 +895,10 @@ namespace BloomHarvester
 		/// <param name="standardOutput">Out parameter. The standard output of the process.</param>
 		/// <param name="standardError">Out parameter. The standard error of the process.</param>
 		/// <returns>Returns true if the process ended by itself without timeout. Returns false if the process was forcibly terminated.</returns>
-		public static bool StartAndWaitForBloomCli(string arguments, int timeoutMilliseconds, out int exitCode, out string standardOutput, out string standardError)
+		public bool StartAndWaitForBloomCli(string arguments, int timeoutMilliseconds, out int exitCode, out string standardOutput, out string standardError)
 		{
+			_logger.LogVerbose("Starting Bloom CLI process");
+			_logger.LogVerbose("Bloom CLI arguments: " + arguments);
 			var process = new Process()
 			{
 				StartInfo = new ProcessStartInfo()
@@ -897,7 +912,7 @@ namespace BloomHarvester
 			};
 
 			StringBuilder processErrorBuffer = new StringBuilder();
-			process.ErrorDataReceived += new DataReceivedEventHandler((sender, e) => { processErrorBuffer.Append(e.Data); });			
+			process.ErrorDataReceived += new DataReceivedEventHandler((sender, e) => { processErrorBuffer.Append(e.Data); });
 
 			process.Start();
 

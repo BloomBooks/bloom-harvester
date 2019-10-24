@@ -17,6 +17,8 @@ namespace BloomHarvesterTests
 		private XElement _twoLanguageCollection;
 		private XElement _threeLanguageCollection;
 		private XElement _silleadCollection;
+		private BookAnalyzer _epubCheckAnalyzer;
+		private BookAnalyzer _epubCheckAnalyzer2;
 
 		private const string kHtml = @"
 <html>
@@ -78,6 +80,9 @@ namespace BloomHarvesterTests
 			_twoLanguageCollection = XElement.Parse(_monolingualBookInBilingualCollectionAnalyzer.BloomCollection);
 			_threeLanguageCollection = XElement.Parse(_monolingualBookInTrilingualCollectionAnalyzer.BloomCollection);
 			_silleadCollection = XElement.Parse(_silleadBrandingAnalyzer.BloomCollection);
+
+			_epubCheckAnalyzer = new BookAnalyzer(kHtmlUnmodifiedPages, GetMetaData());
+			_epubCheckAnalyzer2 = new BookAnalyzer(kHtmlModifiedPage, GetMetaData());
 		}
 
 		private string GetMetaData(string brandingJson = "")
@@ -194,5 +199,130 @@ namespace BloomHarvesterTests
 			Assert.That(_threeLanguageCollection.Element("Language2Name")?.Value, Is.EqualTo("French"));
 			Assert.That(_threeLanguageCollection.Element("Language3Name")?.Value, Is.EqualTo("German"));
 		}
+
+		[Test]
+		public void IsEpubSuitable_Works()
+		{
+			Assert.That(_epubCheckAnalyzer.IsEpubSuitable(), Is.True, "Unmodified Basic Text & Picture pages should be suitable for Epub");
+			Assert.That(_epubCheckAnalyzer2.IsEpubSuitable(), Is.False, "Modified Basic Text & Picture page should not be suitable for Epub");
+		}
+
+		private const string kHtmlUnmodifiedPages = @"<html>
+  <head>
+    <meta charset='UTF-8' />
+  </head>
+  <body>
+    <div id='bloomDataDiv'>
+      <div data-book='contentLanguage1' lang='*'>en</div>
+      <div data-book='contentLanguage1Rtl' lang='*'>False</div>
+      <div data-book='languagesOfBook' lang='*'>English</div>
+    </div>
+    <div class='bloom-page cover coverColor bloom-frontMatter frontCover outsideFrontCover side-right A5Portrait' data-page='required singleton' data-export='front-matter-cover' data-xmatter-page='frontCover' id='89a32796-8cf9-4b0f-a694-43a3d705f620' data-page-number=''>
+      <div class='pageLabel' lang='en' data-i18n='TemplateBooks.PageLabel.Front Cover'>Front Cover</div>
+    </div>
+    <div class='bloom-page numberedPage customPage bloom-combinedPage side-right A5Portrait bloom-monolingual' data-page='' id='002627bd-4853-487d-986a-88ea67e0f31c' data-pagelineage='adcd48df-e9ab-4a07-afd4-6a24d0398382' data-page-number='1' lang=''>
+      <div class='pageLabel' data-i18n='TemplateBooks.PageLabel.Basic Text &amp; Picture' lang='en'>Basic Text &amp; Picture</div>
+      <div class='marginBox'>
+        <div style='min-height: 42px;' class='split-pane horizontal-percent'>
+          <div class='split-pane-component position-top' style='bottom: 50%'>
+            <div class='split-pane-component-inner'>
+              <div title='placeHolder.png 6.58 KB 341 x 335 81 DPI (should be 300-600) Bit Depth: 32' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='placeHolder.png' alt='place holder'></img>
+                <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement'></div>
+              </div>
+            </div>
+          </div>
+          <div class='split-pane-divider horizontal-divider' style='bottom: 50%' />
+          <div class='split-pane-component position-bottom' style='height: 50%'>
+            <div class='split-pane-component-inner'>
+              <div class='bloom-translationGroup bloom-trailingElement' data-default-languages='auto'>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class='bloom-page numberedPage customPage bloom-combinedPage side-left A5Portrait bloom-monolingual' data-page='' id='1e8377b3-f8b3-4fc6-976b-dc3262463880' data-pagelineage='adcd48df-e9ab-4a07-afd4-6a24d0398382' data-page-number='2' lang=''>
+      <div class='pageLabel' data-i18n='TemplateBooks.PageLabel.Basic Text &amp; Picture' lang='en'>Basic Text &amp; Picture</div>
+      <div class='marginBox'>
+        <div style='min-height: 42px;' class='split-pane horizontal-percent'>
+          <div class='split-pane-component position-top' style='bottom: 50%'>
+            <div class='split-pane-component-inner'>
+              <div title='aor_ACC029M.png 35.14 KB 1500 x 806 355 DPI (should be 300-600) Bit Depth: 1' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='aor_ACC029M.png' alt=''></img>
+                <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement'></div>
+              </div>
+            </div>
+          </div>
+          <div class='split-pane-divider horizontal-divider' style='bottom: 50%' />
+          <div class='split-pane-component position-bottom' style='height: 50%'>
+            <div class='split-pane-component-inner'>
+              <div class='bloom-translationGroup bloom-trailingElement' data-default-languages='auto'>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class='bloom-page cover coverColor outsideBackCover bloom-backMatter side-left A5Portrait' data-page='required singleton' data-export='back-matter-back-cover' data-xmatter-page='outsideBackCover' id='f6afe49f-a2fc-480e-80fe-b3262e87868d' data-page-number=''>
+      <div class='pageLabel' lang='en' data-i18n='TemplateBooks.PageLabel.Outside Back Cover'>Outside Back Cover</div>
+    </div>
+  </body>
+</html>
+";
+
+		private const string kHtmlModifiedPage = @"<html>
+  <head>
+    <meta charset='UTF-8' />
+  </head>
+  <body>
+    <div class='bloom-page numberedPage customPage bloom-combinedPage A5Portrait bloom-monolingual side-left' data-page='' id='5a72f533-cd59-4e8d-9da5-2fa052144621' data-pagelineage='adcd48df-e9ab-4a07-afd4-6a24d0398382' data-page-number='1' lang=''>
+      <div class='pageLabel' data-i18n='TemplateBooks.PageLabel.Basic Text &amp; Picture' lang='en'>Basic Text &amp; Picture</div>
+      <div class='marginBox'>
+        <div style='min-height: 42px;' class='split-pane horizontal-percent'>
+          <div class='split-pane-component position-top' style='bottom: 50%'>
+            <div min-height='60px 150px 250px' min-width='60px 150px 250px' style='position: relative;' class='split-pane-component-inner'>
+              <div title='PT-eclipse1.jpg 526.06 KB 4010 x 2684 1915 DPI (should be 300-600) Bit Depth: 24' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='PT-eclipse1.jpg' alt='sun hidden by moon with corona shining all around the moon&apos;s obscuring disk' height='217' width='324'></img>
+                <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement'>
+                  <div data-languagetipcontent='English' aria-label='false' role='textbox' spellcheck='true' tabindex='0' style='min-height: 24px;' class='bloom-editable ImageDescriptionEdit-style bloom-content1 bloom-visibility-code-on' contenteditable='true' lang='en'>
+                    <p>sun hidden by moon with corona shining all around the moon's obscuring disk</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class='split-pane-divider horizontal-divider' style='bottom: 50%'></div>
+          <div class='split-pane-component position-bottom' style='height: 50%'>
+            <div style='min-height: 42px;' class='split-pane horizontal-percent'>
+              <div class='split-pane-component position-top'>
+                <div min-height='60px 150px' min-width='60px 150px 250px' style='position: relative;' class='split-pane-component-inner'>
+                  <div class='bloom-translationGroup bloom-trailingElement' data-default-languages='auto'>
+                    <div data-languagetipcontent='English' data-audiorecordingmode='Sentence' aria-label='false' role='textbox' spellcheck='true' tabindex='0' style='min-height: 24px;' class='bloom-editable normal-style bloom-content1 bloom-visibility-code-on' contenteditable='true' lang='en'>
+                      <p>Solar Eclipse photographed by Paul Thordarson</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class='split-pane-divider horizontal-divider'></div>
+              <div class='split-pane-component position-bottom'>
+                <div min-height='60px 150px' min-width='60px 150px 250px' style='position: relative;' class='split-pane-component-inner adding'>
+                  <div class='box-header-off bloom-translationGroup'>
+                  </div>
+                  <div class='bloom-translationGroup bloom-trailingElement'>
+                    <div data-languagetipcontent='English' aria-label='false' role='textbox' spellcheck='true' tabindex='0' style='min-height: 24px;' class='bloom-editable normal-style bloom-content1 bloom-visibility-code-on' contenteditable='true' lang='en'>
+                      <p>This is a test.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+";
 	}
 }

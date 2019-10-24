@@ -13,6 +13,7 @@ namespace BloomHarvester.Parse.Model
 		public const string kHarvesterMajorVersionField = "harvesterMajorVersion";
 		public const string kHarvesterMinorVersionField = "harvesterMinorVersion";
 		public const string kHarvestLogField = "harvestLog";
+	    public const string kShow = "show";
 
 
 		// There are many more properties from the book table that we could add when they are needed.
@@ -51,6 +52,34 @@ namespace BloomHarvester.Parse.Model
 		[JsonProperty("baseUrl")]
 		public string BaseUrl;
 
+		/// <summary>
+	    /// A json object used to limit what the Library shows the user for each book.
+	    /// For example:
+	    /// "show": {
+	    ///   "epub": {
+	    ///     "harvester": true,
+		///     "user": true,
+		///     "librarian": true,
+	    ///   },
+		///   "pdf": {
+		///     "harvester": true,
+		///     "user": false,
+		///   },
+		///   "bloomReader": {
+		///     "harvester": true,
+		///     "librarian": false,
+		///   },
+		///   "readOnline": {
+		///     "harvester": true,
+		///   }
+		/// }
+	    /// </summary>
+	    /// <remarks>
+	    /// Only the harvester values should be changed by this code!
+	    /// </remarks>
+	    [JsonProperty("show")]
+	    public dynamic Show { get; set; }
+
 		#endregion
 
 
@@ -65,5 +94,43 @@ namespace BloomHarvester.Parse.Model
 			return "books";
 		}
 
+	    internal void SetHarvesterEvaluation(string name, bool enabled)
+	    {
+			if (Show == null)
+			{
+				var jsonString = $"{{ \"{name}\": {{ \"harvester\": {enabled.ToString().ToLowerInvariant()} }} }}";
+				Show = JsonConvert.DeserializeObject(jsonString);
+				return;
+			}
+		    var setting = $"{{ \"harvester\": {enabled.ToString().ToLowerInvariant()} }}";
+			switch (name)
+			{
+				case "epub":
+					if (Show.epub == null)
+						Show.epub = JsonConvert.DeserializeObject(setting);
+					else
+						Show.epub.harvester = enabled;
+					break;
+				case "pdf":
+					if (Show.pdf == null)
+						Show.pdf = JsonConvert.DeserializeObject(setting);
+					else
+						Show.pdf.harvester = enabled;
+					break;
+				case "bloomReader":
+					if (Show.bloomReader == null)
+						Show.bloomReader = JsonConvert.DeserializeObject(setting);
+					else
+						Show.bloomReader.harvester = enabled;
+					break;
+				case "readOnline":
+					if (Show.readOnline == null)
+						Show.readOnline = JsonConvert.DeserializeObject(setting);
+					else
+						Show.readOnline.harvester = enabled;
+					break;
+			}
+
+		}
 	}
 }
