@@ -175,6 +175,11 @@ namespace BloomHarvester
 
 					IEnumerable<Book> bookList = _parseClient.GetBooks(combinedWhereJson);
 
+					if (bookList == null)
+					{
+						continue;
+					}
+
 					// Prioritize New books first.
 					// It would be nice to push this into the Parse query, but the "order" parameter seems to only allow sorting by a field. Can't find any info about sorting by more complicated expressions.
 					//
