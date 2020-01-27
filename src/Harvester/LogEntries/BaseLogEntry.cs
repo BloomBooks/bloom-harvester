@@ -43,6 +43,7 @@ namespace BloomHarvester.LogEntries
 		public abstract bool TryParse(string logMessage, out BaseLogEntry value);
 
 		// Dummy instances of each of the derived types to call its TryParse method (which is semantically a static abstract, except that's not technically possible)
+		private static GetFontsError _getFontsError = new GetFontsError();
 		private static MissingFontError _missingFontError = new MissingFontError("");
 		private static MissingBaseUrlWarning _missingBaseUrlWarning = new MissingBaseUrlWarning();
 
@@ -65,7 +66,11 @@ namespace BloomHarvester.LogEntries
 				return null;
 
 			string message = logEntry.Substring(endOfLevelIndex + 1).TrimStart();
-			if (_missingFontError.TryParse(message, out value))
+			if (_getFontsError.TryParse(message, out value))
+			{
+				return value;
+			}
+			else if (_missingFontError.TryParse(message, out value))
 			{
 				return value;
 			}
