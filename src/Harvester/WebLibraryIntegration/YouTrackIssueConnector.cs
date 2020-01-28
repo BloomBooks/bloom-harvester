@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -20,9 +20,12 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 #if DEBUG
 			Console.Out.WriteLine("Issue caught but skipping creating YouTrack issue because running in DEBUG mode. " + consoleMessage);
 #else
-			string youTrackIssueId = SubmitToYouTrack(summary, description, projectKey);
 			Console.Out.WriteLine(consoleMessage);
-			Console.Out.WriteLine($"Created YouTrack issue {youTrackIssueId}");
+			string youTrackIssueId = SubmitToYouTrack(summary, description, projectKey);
+			if (!String.IsNullOrEmpty(youTrackIssueId))
+			{
+				Console.Out.WriteLine($"Created YouTrack issue {youTrackIssueId}");
+			}
 #endif
 
 			if (exitImmediately)
@@ -37,6 +40,14 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 
 		private static string SubmitToYouTrack(string summary, string description, string youTrackProjectKey)
 		{
+			bool isSilenced = AlertManager.Instance.ReportAlertAndCheckIfSilenced();
+			if (isSilenced)
+			{
+				// Alerts are silenced because too many alerts.
+				// Skip creating the YouTrack issue for this.
+				return "";
+			}
+
 			Connection youTrackConnection = new Connection(_issueTrackingBackend, 0, true, "youtrack");
 			youTrackConnection.Authenticate("auto_report_creator", "thisIsInOpenSourceCode");
 			var issueManagement = new IssueManagement(youTrackConnection);
