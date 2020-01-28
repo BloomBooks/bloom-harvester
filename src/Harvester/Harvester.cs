@@ -68,6 +68,7 @@ namespace BloomHarvester
 				EnvironmentSetting azureMonitorEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
 				_logger = new AzureMonitorLogger(azureMonitorEnvironment, this.Identifier);
 			}
+			AlertManager.Instance.Logger = _logger;
 
 			if (options.LoopWaitSeconds >= 0)
 			{
