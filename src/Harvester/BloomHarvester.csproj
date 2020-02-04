@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net461</TargetFramework>
@@ -30,7 +30,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- Make sure you run build/getDependencies first to get all the references in lib/dotnet-->
+		<!-- Make sure you run build/getDependencies.ps1 first to get all the references in lib/dotnet-->
 		<Reference Include="Bloom">
 			<HintPath>..\..\lib\dotnet\Bloom.exe</HintPath>
 		</Reference>
@@ -58,18 +58,4 @@
 			<HintPath>..\..\lib\dotnet\YouTrackSharp.dll</HintPath>
 		</Reference>
 	</ItemGroup>
-
-	<Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-		<Exec Command="copy /Y &quot;$(SolutionDir)lib\dotnet\BloomAlpha.exe&quot; &quot;$(SolutionDir)lib\dotnet\Bloom.exe&quot;&#xD;&#xA;xcopy /Y &quot;%UserProfile%\.nuget\packages\geckofx45\45.0.28\content\Firefox\*.*&quot; &quot;$(OutDir)Firefox\&quot;" />
-		<Message Importance="high" Text="Prebuild step  finished" />
-	</Target>
-
-	<ItemGroup>
-		<Dependencies Include="$(SolutionDir)lib\dotnet\*.*" />
-	</ItemGroup>
-	
-	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
-		<Exec Command="copy /Y &quot;$(SolutionDir)lib\dotnet\*.*&quot; &quot;$(OutDir)\&quot;" />
-		<Message Importance="high" Text="PostBuild step finished." />
-	</Target>
 </Project>

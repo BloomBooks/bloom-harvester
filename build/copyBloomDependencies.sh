@@ -10,6 +10,9 @@ for mode in "${buildModes[@]}"
 do
 	:
 	harvestBuildDir="../src/Harvester/bin/$mode/net461/"
+
+	cp "$bloomDir/output/$mode/Bloom.exe" "$harvestBuildDir/Bloom.exe"
+
 	mkdir -p "$harvestBuildDir/browser"
 	cp -r "$bloomDir/output/browser/bookEdit" "$harvestBuildDir/browser/bookEdit"
 	cp -r "$bloomDir/output/browser/bookLayout" "$harvestBuildDir/browser/bookLayout"
