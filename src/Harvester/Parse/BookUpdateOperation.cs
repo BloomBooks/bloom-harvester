@@ -12,5 +12,11 @@ namespace BloomHarvester.Parse
 		{
 			UpdateFieldWithString("updateSource", "bloomHarvester");
 		}
+
+		override internal void Clear()
+		{
+			base.Clear();
+			UpdateFieldWithString("updateSource", "bloomHarvester");
+		}
 	}
 }

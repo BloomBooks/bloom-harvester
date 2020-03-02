@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace BloomHarvester.Parse.Model
@@ -9,46 +10,106 @@ namespace BloomHarvester.Parse.Model
     public class Book : ParseObject
     {
 		public const string kHarvestStateField = "harvestState";
-		public const string kHarvesterIdField = "harvesterId";
-		public const string kHarvesterMajorVersionField = "harvesterMajorVersion";
-		public const string kHarvesterMinorVersionField = "harvesterMinorVersion";
-		public const string kHarvestLogField = "harvestLog";
 	    public const string kShowField = "show";
 
+		public Book()
+		{
+			UpdateOp = new BookUpdateOperation();
+		}
+
+		internal BookUpdateOperation UpdateOp { get; set; }
 
 		// There are many more properties from the book table that we could add when they are needed.
 		// When adding a new property, you probably also need to add it to the list of keys selected in ParseClient.cs
 
 		#region Harvester-specific properties
-		[JsonProperty("harvestState")]
-		public string HarvestState;
+		private string _harvestState;
+		[JsonProperty(kHarvestStateField)]
+		public string HarvestState
+		{
+			get => _harvestState;
+			set
+			{
+				_harvestState = value;
+				UpdateOp.UpdateFieldWithString(kHarvestStateField, value);
+			}
+		}
 
+		private string _harvesterId;
+		[JsonProperty("harvesterId")]
+		public string HarvesterId
+		{
+			get => _harvesterId;
+			set
+			{
+				_harvesterId = value;
+				UpdateOp.UpdateFieldWithString("harvesterId", value);
+			}
+		}
+
+		private int _harvesterMajorVersion;
 		/// <summary>
 		/// Represents the major version number of the last Harvester instance that attempted to process this book.
 		/// If the major version changes, then we will redo processing even of books that succeeded.
 		/// </summary>
 		[JsonProperty("harvesterMajorVersion")]
-		public int HarvesterMajorVersion;
+		public int HarvesterMajorVersion
+		{
+			get => _harvesterMajorVersion;
+			set
+			{
+				_harvesterMajorVersion = value;
+				UpdateOp.UpdateFieldWithNumber("harvesterMajorVersion", value);
+			}
+		}
 
+		private int _harvesterMinorVersion;
 		/// <summary>
 		/// Represents the minor version number of the last Harvester instance that attempted to process this book.
 		/// If the minor version is updated, then we will redo processing of books that failed
 		/// </summary>
 		[JsonProperty("harvesterMinorVersion")]
-		public int HarvesterMinorVersion;
+		public int HarvesterMinorVersion
+		{
+			get => _harvesterMinorVersion;
+			set
+			{
+				_harvesterMinorVersion = value;
+				UpdateOp.UpdateFieldWithNumber("harvesterMinorVersion", value);
+			}
+		}
 
+		private Parse.Model.Date _harvestStartedAt;
 		/// <summary>
 		/// The timestamp of the last time Harvester started processing this book
 		/// </summary>
 		[JsonProperty("harvestStartedAt")]
-		public Date HarvestStartedAt;
+		public Parse.Model.Date HarvestStartedAt
+		{
+			get => _harvestStartedAt;
+			set
+			{
+				_harvestStartedAt = value;
+				UpdateOp.UpdateFieldWithJson("harvestStartedAt", value.ToJson());
+			}
+		}
 
+		private List<string> _harvestLogEntries;
 		[JsonProperty("harvestLog")]
-		public List<string> HarvestLogEntries;
+		public List<string> HarvestLogEntries
+		{
+			get => _harvestLogEntries;
+			set
+			{
+				_harvestLogEntries = value;
+				UpdateOp.UpdateFieldWithJson("harvestLog", Book.ToJson(value));
+			}
+		}
 		#endregion
 
 
 		#region Non-harvester related properties of the book
+		// These properties generally don't have custom setters, since I don't normally expect these to be changed/propagated to the database
 		[JsonProperty("baseUrl")]
 		public string BaseUrl;
 
@@ -64,15 +125,28 @@ namespace BloomHarvester.Parse.Model
 		[JsonProperty("uploader")]
 		public User Uploader;
 
+		private string[] _features;
+		[JsonProperty("features")]
+		public string[] Features
+		{
+			get => _features;
+			set
+			{
+				_features = value;
+				UpdateOp.UpdateFieldWithJson("features", ToJson(value));
+			}
+		}
+
+		private dynamic _show;
 		/// <summary>
-	    /// A json object used to limit what the Library shows the user for each book.
-	    /// For example:
-	    /// "show": {
-	    ///   "epub": {
-	    ///     "harvester": true,
+		/// A json object used to limit what the Library shows the user for each book.
+		/// For example:
+		/// "show": {
+		///   "epub": {
+		///     "harvester": true,
 		///     "user": true,
 		///     "librarian": true,
-	    ///   },
+		///   },
 		///   "pdf": {
 		///     "harvester": true,
 		///     "user": false,
@@ -85,12 +159,20 @@ namespace BloomHarvester.Parse.Model
 		///     "harvester": true,
 		///   }
 		/// }
-	    /// </summary>
-	    /// <remarks>
-	    /// Only the harvester values should be changed by this code!
-	    /// </remarks>
-	    [JsonProperty("show")]
-	    public dynamic Show { get; set; }
+		/// </summary>
+		/// <remarks>
+		/// Only the harvester values should be changed by this code!
+		/// </remarks>
+		[JsonProperty(kShowField)]
+		public dynamic Show
+		{
+			get => _show;
+			set
+			{
+				_show = value;
+				UpdateOp.DeferUpdateOfFieldWithObject(kShowField, value);
+			}
+		}
 
 		#endregion
 
@@ -184,5 +266,29 @@ namespace BloomHarvester.Parse.Model
 			string anchorReference = $"https://{subdomain}bloomlibrary.org/browse/detail/{this.ObjectId}";
 			return anchorReference;
 		}
+
+		/// <summary>
+		/// Modifies the book with newer metadata
+		/// </summary>
+		/// <param name="bookFolderPath">The path to find the up-to-date version of the book (which contains the up-to-date meta.json)</param>
+		internal void UpdateMetadataIfNeeded(string bookFolderPath)
+		{
+			var metaData = Bloom.Book.BookMetaData.FromFolder(bookFolderPath);
+			UpdateMetadataIfNeeded(metaData);
+		}
+
+		/// <summary>
+		/// Modifies the book with newer metadata
+		/// </summary>
+		/// <param name="metaData">The new metadata to update with</param>
+		internal void UpdateMetadataIfNeeded(Bloom.Book.BookMetaData metaData)
+		{
+			if ((this.Features == null && metaData.Features != null)
+				|| !this.Features.SequenceEqual(metaData.Features))
+			{
+				this.Features = metaData.Features;
+			}
+		}
+
 	}
 }

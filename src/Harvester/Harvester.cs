@@ -397,20 +397,20 @@ namespace BloomHarvester
 				string message = $"Processing: {book.BaseUrl}";
 				_logger.LogVerbose(message);
 
-				_logger.TrackEvent("ProcessOneBook Start");	// After we check ShouldProcessBook
+				_logger.TrackEvent("ProcessOneBook Start"); // After we check ShouldProcessBook
 
 				// Parse DB initial updates
-				var initialUpdates = new BookUpdateOperation();
-				initialUpdates.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.InProgress.ToString());
-				initialUpdates.UpdateFieldWithString(Book.kHarvesterIdField, this.Identifier);
-				initialUpdates.UpdateFieldWithNumber(Book.kHarvesterMajorVersionField, Version.Major.ToString());
-				initialUpdates.UpdateFieldWithNumber(Book.kHarvesterMinorVersionField, Version.Minor.ToString());
-				var startTime = new Parse.Model.Date(DateTime.UtcNow);
-				initialUpdates.UpdateFieldWithJson("harvestStartedAt", startTime.ToJson());
+				book.UpdateOp.Clear();
+				book.HarvestState = Parse.Model.HarvestState.InProgress.ToString();
+				book.HarvesterId = this.Identifier;
+				book.HarvesterMajorVersion = Version.Major;
+				book.HarvesterMinorVersion = Version.Minor;
+				book.HarvestStartedAt = new Parse.Model.Date(DateTime.UtcNow);
+
 				if (!_options.ReadOnly)
 				{
 					_currentBookId = book.ObjectId;
-					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, initialUpdates.ToJson());
+					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, book.UpdateOp.ToJson());
 				}
 
 				// Download the book
@@ -432,7 +432,7 @@ namespace BloomHarvester
 				}
 
 				// Process the book
-				var finalUpdates = new BookUpdateOperation();
+				book.UpdateOp.Clear();
 				List<BaseLogEntry> harvestLogEntries = CheckForMissingFontErrors(downloadBookDir, book);
 				bool anyFontsMissing = harvestLogEntries.Any();
 				isSuccessful &= !anyFontsMissing;
@@ -455,22 +455,22 @@ namespace BloomHarvester
 				}
 
 				// Finalize the state
-				finalUpdates.UpdateFieldWithJson(Book.kHarvestLogField, Book.ToJson(harvestLogEntries.Select(x => x.ToString())));
+				book.HarvestLogEntries = harvestLogEntries.Select(x => x.ToString()).ToList();
 				if (isSuccessful)
 				{
-					finalUpdates.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.Done.ToString());
-					finalUpdates.UpdateFieldWithJson(Book.kShowField, JsonConvert.SerializeObject(book.Show));
+					book.HarvestState = Parse.Model.HarvestState.Done.ToString();
 				}
 				else
 				{
-					finalUpdates.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.Failed.ToString());
+					book.HarvestState = Parse.Model.HarvestState.Failed.ToString();
+					book.UpdateOp.RemoveUpdate(Book.kShowField);
 				}
 
 				// Write the updates
 				if (!_options.ReadOnly)
 				{
 					_currentBookId = null;
-					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, finalUpdates.ToJson());
+					_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, book.UpdateOp.ToJson());
 				}
 
 				if (!_options.SkipDownload)
@@ -495,10 +495,10 @@ namespace BloomHarvester
 				{
 					try
 					{
-						var onErrorUpdates = new BookUpdateOperation();
-						onErrorUpdates.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.Failed.ToString());
-						onErrorUpdates.UpdateFieldWithString(Book.kHarvesterIdField, this.Identifier);
-						_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, onErrorUpdates.ToJson());
+						book.UpdateOp.Clear();
+						book.HarvestState = Parse.Model.HarvestState.Failed.ToString();
+						book.HarvesterId = this.Identifier;
+						_parseClient.UpdateObject(book.GetParseClassName(), book.ObjectId, book.UpdateOp.ToJson());
 					}
 					catch (Exception)
 					{
@@ -916,8 +916,9 @@ namespace BloomHarvester
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={downloadBookDir}\" \"--collectionPath={collectionFilePath}\"";
-					if (!_options.SkipUploadBloomDigitalArtifacts)
+					if (!_options.SkipUploadBloomDigitalArtifacts || !_options.SkipUpdateMetadata)
 					{
+						// Note: We need bloomDigitalOutputPath if we update metadata too, because making the bloomd is what generates our updated meta.json
 						bloomArguments += $" \"--bloomdOutputPath={zippedBloomDOutputPath}\" \"--bloomDigitalOutputPath={folderForUnzipped.FolderPath}\"";
 					}
 
@@ -985,6 +986,11 @@ namespace BloomHarvester
 						if (!_options.SkipUploadThumbnails)
 						{
 							UploadThumbnails(thumbnailInfoPath, s3FolderLocation);
+						}
+
+						if (!_options.SkipUpdateMetadata)
+						{
+							book.UpdateMetadataIfNeeded(folderForUnzipped.FolderPath);
 						}
 					}
 				}
@@ -1120,6 +1126,5 @@ namespace BloomHarvester
 				}
 			}
 		}
-
 	}
 }
