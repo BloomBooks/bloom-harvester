@@ -59,8 +59,8 @@ namespace BloomHarvester.Parse.Model
 				return false;
 
 			Date other = (Date)obj;
-			return this.Iso == other.Iso
-				&& this.UtcTime == other.UtcTime;
+			// No need to compare UtcTime. 1) It's not actually serialized, and 2) is more error-prone to trivial differences showing up
+			return this.Iso == other.Iso;
 		}
 
 		public string ToJson()

@@ -18,7 +18,7 @@ namespace BloomHarvester
 		/// </summary>
 		internal static void UpdateState(EnvironmentSetting parseDbEnvironment, string objectId, Parse.Model.HarvestState newState)
 		{
-			var updateOp = new BookUpdateOperation();
+			var updateOp = Book.GetNewBookUpdateOperation();
 			updateOp.UpdateFieldWithString(Book.kHarvestStateField, newState.ToString());
 
 			EnvironmentSetting environment = EnvironmentUtils.GetEnvOrFallback(parseDbEnvironment, EnvironmentSetting.Default);
