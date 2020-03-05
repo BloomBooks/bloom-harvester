@@ -51,8 +51,8 @@ namespace BloomHarvesterTests.Parse
 			string json1 = updateOp1.ToJson();
 
 			var updateOp2 = new UpdateOperation();
-			updateOp1.UpdateFieldWithObject("field", value);
-			string json2 = updateOp1.ToJson();
+			updateOp2.UpdateFieldWithObject("field", value);
+			string json2 = updateOp2.ToJson();
 
 			Assert.AreEqual(json1, json2);
 		}
@@ -67,8 +67,8 @@ namespace BloomHarvesterTests.Parse
 			string json1 = updateOp1.ToJson();
 
 			var updateOp2 = new UpdateOperation();
-			updateOp1.UpdateFieldWithObject("field", value);
-			string json2 = updateOp1.ToJson();
+			updateOp2.UpdateFieldWithObject("field", value);
+			string json2 = updateOp2.ToJson();
 
 			Assert.AreEqual(json1, json2);
 		}
@@ -85,8 +85,8 @@ namespace BloomHarvesterTests.Parse
 			string json1 = updateOp1.ToJson();
 
 			var updateOp2 = new UpdateOperation();
-			updateOp1.UpdateFieldWithObject("field", inputValue);
-			string json2 = updateOp1.ToJson();
+			updateOp2.UpdateFieldWithObject("field", inputValue);
+			string json2 = updateOp2.ToJson();
 
 			Assert.AreEqual(json1, json2);
 		}

@@ -18,9 +18,8 @@ namespace BloomHarvesterTests.Parse
 			// Setup
 			var book = new Book()
 			{
-				BaseUrl = "www.amazon.com",
 				HarvestState = "Done",
-				HarvestStartedAt = new Date(startDateTime),
+				HarvestStartedAt = new ParseDate(startDateTime),
 				HarvesterMajorVersion = 1,
 				HarvesterMinorVersion = 0,
 				HarvestLogEntries = new List<string>()
@@ -47,7 +46,6 @@ namespace BloomHarvesterTests.Parse
 			Assert.AreEqual("/classes/c1", request.path.Value, "Request Path");
 
 			dynamic body = request.body;
-			Assert.AreEqual("www.amazon.com", body.baseUrl.Value, "BaseUrl");
 			Assert.AreEqual("Done", body.harvestState.Value, "HarvestState");
 			Assert.AreEqual(1, body.harvesterMajorVersion.Value, "HarvesterMajorVersion");
 			Assert.AreEqual(0, body.harvesterMinorVersion.Value, "HarvesterMinorVersion");

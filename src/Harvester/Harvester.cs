@@ -135,7 +135,7 @@ namespace BloomHarvester
 				// Before closing, try to update the state in the database so that it's not stuck in "InProgress"
 				if (!String.IsNullOrEmpty(_currentBookId))
 				{
-					var updateOp = new BookUpdateOperation();
+					var updateOp = Book.GetNewBookUpdateOperation();
 					updateOp.UpdateFieldWithString(Book.kHarvestStateField, Parse.Model.HarvestState.Aborted.ToString());
 					_parseClient.UpdateObject(Book.GetStaticParseClassName(), _currentBookId, updateOp.ToJson());
 					return true;
@@ -404,13 +404,13 @@ namespace BloomHarvester
 				book.HarvesterId = this.Identifier;
 				book.HarvesterMajorVersion = Version.Major;
 				book.HarvesterMinorVersion = Version.Minor;
-				book.HarvestStartedAt = new Parse.Model.Date(DateTime.UtcNow);
+				book.HarvestStartedAt = new Parse.Model.ParseDate(DateTime.UtcNow);
 
 				if (!_options.ReadOnly)
 				{
-					_currentBookId = book.ObjectId;
-					book.FlushUpdateToDatabase(_parseClient);
+					_currentBookId = book.ObjectId;					
 				}
+				book.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
 
 				// Download the book
 				_logger.TrackEvent("Download Book");
@@ -441,15 +441,15 @@ namespace BloomHarvester
 					var warnings = FindBookWarnings(book);
 					harvestLogEntries.AddRange(warnings);
 
-					if (_options.ReadOnly)
-						return true;
+					if (!_options.ReadOnly)
+					{
+						var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
+						var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
 
-					var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
-					var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
-
-					isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book);
-					if (isSuccessful)
-						UpdateSuitabilityofArtifacts(book, analyzer);
+						isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book);
+						if (isSuccessful)
+							UpdateSuitabilityofArtifacts(book, analyzer);
+					}
 				}
 
 				// Finalize the state
@@ -464,11 +464,8 @@ namespace BloomHarvester
 				}
 
 				// Write the updates
-				if (!_options.ReadOnly)
-				{
-					_currentBookId = null;
-					book.FlushUpdateToDatabase(_parseClient);
-				}
+				_currentBookId = null;
+				book.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
 
 				if (!_options.SkipDownload)
 				{

@@ -16,11 +16,6 @@ namespace BloomHarvester.Parse.Model
 		// Enhance: Add more fields as needed.
 		// But, for user information, better to utilize as little as needed
 
-		public override bool Equals(object other)
-		{
-			return base.Equals(other);
-		}
-
 		internal override string GetParseClassName()
 		{
 			return "User";
