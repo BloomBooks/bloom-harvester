@@ -38,6 +38,17 @@ namespace BloomHarvester.Parse.Model
 				&& this.ClassName == other.ClassName;
 		}
 
+		public override int GetHashCode()
+		{
+			// Derived from https://stackoverflow.com/a/5060059
+			int hashCode = 37;
+			hashCode *= 397;
+			hashCode += ObjectId?.GetHashCode() ?? 0;
+			hashCode *= 397;
+			hashCode += ClassName?.GetHashCode() ?? 0;
+			return hashCode;
+		}
+
 		internal string ToJson()
 		{
 			if (this.Value == null)

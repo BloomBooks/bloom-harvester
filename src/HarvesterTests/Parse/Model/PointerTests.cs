@@ -26,8 +26,7 @@ namespace BloomHarvesterTests.Parse.Model
 
 			string resultJson = pointer.ToJson();
 
-			string expectedJson = "{\"__type\":\"Pointer\",\"className\":\"language\",\"objectId\":\"123\"}";
-			Assert.AreEqual(expectedJson, resultJson);
+			Assert.That(resultJson, Is.EqualTo("{\"__type\":\"Pointer\",\"className\":\"language\",\"objectId\":\"123\"}"));
 		}
 
 		[Test]
@@ -41,12 +40,12 @@ namespace BloomHarvesterTests.Parse.Model
 
 			bool result = pointer1.Equals(pointer2);
 
-			Assert.AreEqual(true, result);
+			Assert.That(result, Is.True);
 		}
 
 
 		[Test]
-		public void Pointer_Equals_SameObjectIdButDifferentUnderlying_ReturnsTue()
+		public void Pointer_Equals_SameObjectIdButDifferentUnderlying_ReturnsTrue()
 		{
 			var lang1 = new Language();
 			var lang2 = new Language();
@@ -65,7 +64,7 @@ namespace BloomHarvesterTests.Parse.Model
 
 			bool result = pointer1.Equals(pointer2);
 
-			Assert.AreEqual(true, result);
+			Assert.That(result, Is.True);
 		}
 		[Test]
 		public void Pointer_Equals_DifferentReferences_ReturnsFalse()
@@ -80,7 +79,7 @@ namespace BloomHarvesterTests.Parse.Model
 
 			bool result = pointer1.Equals(pointer2);
 
-			Assert.AreEqual(false, result);
+			Assert.That(result, Is.False);
 		}
 
 		[Test]
@@ -88,7 +87,7 @@ namespace BloomHarvesterTests.Parse.Model
 		{
 			var pointer1 = new Pointer<Language>(new Language());
 			bool result = pointer1.Equals(null);
-			Assert.AreEqual(false, result);
+			Assert.That(result, Is.False);
 		}
 
 		[Test]
@@ -99,7 +98,7 @@ namespace BloomHarvesterTests.Parse.Model
 
 			bool result = pointer1.Equals(pointer2);
 
-			Assert.AreEqual(false, result);
+			Assert.That(result, Is.False);
 		}
 	}
 }

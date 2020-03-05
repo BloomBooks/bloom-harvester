@@ -30,6 +30,19 @@ namespace BloomHarvester.Parse.Model
 				&& this.Name == other.Name;
 		}
 
+		public override int GetHashCode()
+		{
+			// Derived from https://stackoverflow.com/a/5060059
+			int hashCode = base.GetHashCode();
+			hashCode *= 397;
+			hashCode += IsoCode?.GetHashCode() ?? 0;
+			hashCode *= 397;
+			hashCode += EthnologueCode?.GetHashCode() ?? 0;
+			hashCode *= 397;
+			hashCode += Name?.GetHashCode() ?? 0;
+			return hashCode;
+		}
+
 		internal override string GetParseClassName()
 		{
 			return "language";

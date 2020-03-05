@@ -13,20 +13,10 @@ namespace BloomHarvester.Parse
 	/// </summary>
 	internal class UpdateOperation
 	{
-		protected Dictionary<string, string> _updatedFieldValues = new Dictionary<string, string>();
+		internal Dictionary<string, string> _updatedFieldValues = new Dictionary<string, string>();
 
 		internal UpdateOperation()
 		{
-		}
-
-		virtual internal void Clear()
-		{
-			_updatedFieldValues.Clear();
-		}
-
-		internal void RemoveUpdate(string fieldName)
-		{
-			_updatedFieldValues.Remove(fieldName);
 		}
 
 		/// <summary>

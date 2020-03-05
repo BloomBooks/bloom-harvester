@@ -83,7 +83,7 @@ namespace BloomHarvesterTests
 			var book = new Book()
 			{
 				HarvestState = HarvestState.InProgress.ToString(),
-				HarvestStartedAt = new BloomHarvester.Parse.Model.Date(oneMinuteAgo),
+				HarvestStartedAt = new BloomHarvester.Parse.Model.ParseDate(oneMinuteAgo),
 				HarvesterMajorVersion = previousVersion.Major,
 				HarvesterMinorVersion = previousVersion.Minor,
 				HarvestLogEntries = new List<string>()
@@ -112,7 +112,7 @@ namespace BloomHarvesterTests
 			var book = new Book()
 			{
 				HarvestState = HarvestState.InProgress.ToString(),
-				HarvestStartedAt = new BloomHarvester.Parse.Model.Date(threeDaysAgo),
+				HarvestStartedAt = new BloomHarvester.Parse.Model.ParseDate(threeDaysAgo),
 				HarvesterMajorVersion = previousVersion.Major,
 				HarvesterMinorVersion = previousVersion.Minor,
 				HarvestLogEntries = new List<string>()

@@ -6,13 +6,16 @@ using System.Text;
 
 namespace BloomHarvester.Parse.Model
 {
+	/// <summary>
+	/// Represents the "Date" type defined by Parse.
+	/// </summary>
 	[JsonObject]
-	public class Date
+	public class ParseDate
 	{
 		private const string kDateFormat = "yyyy-MM-ddTHH:mm:ss.fffK";
 
 		// Constructor
-		public Date(DateTime dateTime)
+		public ParseDate(DateTime dateTime)
 		{
 			this.UtcTime = dateTime;
 		}
@@ -55,12 +58,21 @@ namespace BloomHarvester.Parse.Model
 
 		public override bool Equals(object obj)
 		{
-			if (!(obj is Date))
+			if (!(obj is ParseDate))
 				return false;
 
-			Date other = (Date)obj;
-			return this.Iso == other.Iso
-				&& this.UtcTime == other.UtcTime;
+			ParseDate other = (ParseDate)obj;
+			// No need to compare UtcTime. 1) It's not actually serialized, and 2) is more error-prone to trivial differences showing up
+			return this.Iso == other.Iso;
+		}
+
+		public override int GetHashCode()
+		{
+			// Derived from https://stackoverflow.com/a/5060059
+			int hashCode = 37;
+			hashCode *= 397;
+			hashCode += Iso?.GetHashCode() ?? 0;
+			return hashCode;
 		}
 
 		public string ToJson()
