@@ -2,11 +2,13 @@
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
+using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BloomHarvesterTests.Stubs;
 
 namespace BloomHarvesterTests
 {
@@ -18,6 +20,161 @@ namespace BloomHarvesterTests
 			return new Book(model, new NullLogger());
 		}
 
+		#region GetTagDictionary
+		[TestCase(null, "null array case")]
+		[TestCase(new string[] { }, "mpty array case")]
+		public void Book_GetTagDictionary_Empty(string[] initialValue, string message)
+		{
+			var book = CreateBook(new BookModel()
+			{
+				Tags = initialValue
+			});
+
+			var invoker = new VSUnitTesting.PrivateObject(book);
+			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+
+			Assert.That(map.Count, Is.EqualTo(0), message);
+		}
+
+
+		[Test]
+		public void Book_GetTagDictionary_SingleTag()
+		{
+			// Setup
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "system:Incoming" }
+			});
+
+			// System under test
+			var invoker = new VSUnitTesting.PrivateObject(book);
+			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+
+			// Verification
+			var expected = new Dictionary<string, List<string>>();
+			expected.Add("system", (new string[] { "Incoming" }).ToList());
+
+			CollectionAssert.AreEquivalent(expected, map);
+		}
+
+		[Test]
+		public void Book_GetTagDictionary_TwoDistinctTags()
+		{
+			// Setup
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "system:Incoming", "computedLevel:2" }
+			});
+
+			// System under test
+			var invoker = new VSUnitTesting.PrivateObject(book);
+			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+
+			// Verification
+			var expected = new Dictionary<string, List<string>>();
+			expected.Add("system", (new string[] { "Incoming" }).ToList());
+			expected.Add("computedLevel", (new string[] { "2" }).ToList());
+
+			CollectionAssert.AreEquivalent(expected, map);
+		}
+
+
+		[Test]
+		public void Book_GetTagDictionary_DuplicateKey_MergedIntoSingeList()
+		{
+			// Setup
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "bookshelf:Guatemala", "bookshelf:Comics" }
+			});
+
+			// System under test
+			var invoker = new VSUnitTesting.PrivateObject(book);
+			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+
+			// Verification
+			var expected = new Dictionary<string, List<string>>();
+			expected.Add("bookshelf", (new string[] { "Guatemala", "Comics" }).ToList());
+
+			CollectionAssert.AreEquivalent(expected, map);
+		}
+
+		[Test]
+		public void Book_GetTagDictionary_KeyButNoValue()
+		{
+			// Setup
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "someKey" }
+			});
+
+			// System under test
+			var invoker = new VSUnitTesting.PrivateObject(book);
+			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+
+			// Verification
+			var expected = new Dictionary<string, List<string>>();
+			expected.Add("someKey", new List<string>());
+
+			CollectionAssert.AreEquivalent(expected, map);
+		}
+		#endregion
+
+		#region SetTags
+		[TestCase(null, "null array")]
+		[TestCase(new string[0], "empty array")]
+		public void Book_SetTags_OneOtherTagBefore_NewTagAdded(string[] initialValue, string message)
+		{
+			var book = CreateBook(new BookModel()
+			{
+				Tags = initialValue
+			});
+
+			var stubAnalyzer = new StubBookAnalyzer();
+			stubAnalyzer.NextGetBookComputedLevelResult = 1;
+			book.Analyzer = stubAnalyzer;
+
+			book.SetTags();
+
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1" }, book.Model.Tags, message);
+		}
+
+		[Test]
+		public void Book_SetTags_OneOtherTagBefore_NewTagAdded()
+		{
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "system:Incoming" }
+			});
+
+			var stubAnalyzer = new StubBookAnalyzer();
+			stubAnalyzer.NextGetBookComputedLevelResult = 2;
+			book.Analyzer = stubAnalyzer;
+
+			book.SetTags();
+
+			CollectionAssert.AreEquivalent(new string[] { "system:Incoming", "computedLevel:2" }, book.Model.Tags);
+		}
+
+		[Test]
+		public void Book_SetTags_TagAlreadyExists_TagReplaced()
+		{
+			var book = CreateBook(new BookModel()
+			{
+				Tags = new string[] { "computedLevel:2" }
+			});
+
+			var stubAnalyzer = new StubBookAnalyzer();
+			stubAnalyzer.NextGetBookComputedLevelResult = 3;
+			book.Analyzer = stubAnalyzer;
+
+			book.SetTags();
+
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:3" }, book.Model.Tags);
+		}
+		#endregion
+
+		#region SetHarvesterEvaluation
 		[Test]
 		public void Book_SetHarvesterEvaluation_InsertsProperly()
 		{
@@ -68,7 +225,9 @@ namespace BloomHarvesterTests
 			string expectedJsonFragment = "\"show\":{\"epub\":{\"harvester\":true,\"librarian\":true,\"user\":true},\"pdf\":{\"harvester\":true,\"librarian\":false,\"user\":false},\"bloomReader\":{\"harvester\":true,\"librarian\":false},\"readOnline\":{\"harvester\":true,\"user\":true}}";
 			Assert.That(bookJson.Contains(expectedJsonFragment), Is.True);
 		}
+		#endregion
 
+		#region GetBloomLibraryBookDetailLink
 		[Test]
 		public void Book_GetBloomLibraryBookDetailLink_Prod_PopulatesLink()
 		{
@@ -109,6 +268,7 @@ namespace BloomHarvesterTests
 
 			Assert.That(url, Is.Null);
 		}
+		#endregion
 
 		[Test]
 		public void Book_UpdateMetadata_NotEqual_PendingUpdatesFound()

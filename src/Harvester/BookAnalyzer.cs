@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -11,10 +12,15 @@ using SIL.Xml;
 
 namespace BloomHarvester
 {
+	internal interface IBookAnalyzer
+	{
+		int GetBookComputedLevel();
+	}
+
 	/// <summary>
 	/// Analyze a book and extract various information the harvester needs
 	/// </summary>
-	public class BookAnalyzer
+	class BookAnalyzer : IBookAnalyzer
 	{
 		private HtmlDom _dom;
 		public BookAnalyzer(string html, string meta)
@@ -156,14 +162,14 @@ namespace BloomHarvester
 		public bool IsEpubSuitable()
 		{
 			int goodPages = 0;
-			foreach (var div in _dom.SafeSelectNodes("//div[contains(concat(' ', @class, ' '),' numberedPage ')]").Cast<XmlElement> ().ToList ())
+			foreach (var div in GetNumberedPages().ToList())
 			{
 				var imageContainers = div.SafeSelectNodes("div[contains(@class,'marginBox')]//div[contains(@class,'bloom-imageContainer')]");
 				if (imageContainers.Count > 1)
 					return false;
 
 				// Count any translation group which is not an image description
-				var translationGroups = div.SafeSelectNodes("div[contains(@class,'marginBox')]//div[contains(@class,'bloom-translationGroup') and not(contains(@class,'bloom-imageDescription'))]");
+				var translationGroups = GetNonImageTranslationGroupsFromPage(div);
 				if (translationGroups.Count > 1)
 					return false;
 
@@ -173,6 +179,77 @@ namespace BloomHarvester
 				++goodPages;
 			}
 			return goodPages > 0;
+		}
+
+		/// <summary>
+		/// Computes an estimate of the level of the book
+		/// </summary>
+		/// <returns>An int representing the level of the book.
+		/// 1: "First words", 2: "First sentences", 3: "First paragraphs", 4: "Longer paragraphs"
+		/// -1: Error
+		/// </returns>
+		public int GetBookComputedLevel()
+		{
+			var numberedPages = GetNumberedPages();
+
+			int pageCount = 0;
+			int maxWordsPerPage = 0;
+			foreach (var pageElement in numberedPages)
+			{
+				++pageCount;
+				int wordCountForThisPage = 0;
+
+				XmlNodeList editables = GetNonImageEditablesFromPage(pageElement, Language1Code);
+				foreach (XmlNode editable in editables)
+				{
+					string text = editable.InnerText;
+					string[] words = text.Split(new char[] { ' ', '.', ',' }, StringSplitOptions.RemoveEmptyEntries);
+					int wordCount = words.Length;
+					wordCountForThisPage += wordCount;
+				}
+
+				maxWordsPerPage = Math.Max(maxWordsPerPage, wordCountForThisPage);
+			}
+
+			// This algorithm is to maintain consistentcy with African Storybook Project word count definitions
+			// (Note: There are also guidelines about sentence count and paragraph count, which we could && in to here in the future).
+			if (maxWordsPerPage <= 10)
+				return 1;
+			else if (maxWordsPerPage <= 25)
+				return 2;
+			else if (maxWordsPerPage <= 50)
+				return 3;
+			else
+				return 4;
+		}
+
+		private IEnumerable<XmlElement> GetNumberedPages() => _dom.SafeSelectNodes("//div[contains(concat(' ', @class, ' '),' numberedPage ')]").Cast<XmlElement>();
+
+		private string GetNonImageTranslationGroupsXpath() => "div[contains(@class,'marginBox')]//div[contains(@class,'bloom-translationGroup') and not(contains(@class,'bloom-imageDescription'))]";
+
+		/// <summary>
+		/// Gets the translation groups for the current page that are not within the image container
+		/// </summary>
+		/// <param name="pageElement">The page containing the bloom-editables</param>
+		private XmlNodeList GetNonImageTranslationGroupsFromPage(XmlElement pageElement)
+		{
+			var translationGroups = pageElement.SafeSelectNodes(GetNonImageTranslationGroupsXpath());
+			return translationGroups;
+		}
+
+		/// <summary>
+		/// Gets the bloom-editables for the current page that match the language and are not within the image container
+		/// </summary>
+		/// <param name="pageElement">The page containing the bloom-editables</param>
+		/// <param name="lang">Only bloom-editables matching this ISO language code will be returned</param>
+		private XmlNodeList GetNonImageEditablesFromPage(XmlElement pageElement, string lang)
+		{
+			string translationGroup = GetNonImageTranslationGroupsXpath();
+			string langFilter = Bloom.Book.HtmlDom.IsLanguageValid(lang) ? $"[@lang='{lang}']" : "";
+
+			string xPath = $"{translationGroup}//div[contains(@class,'bloom-editable')]{langFilter}";
+			var translationGroups = pageElement.SafeSelectNodes(xPath);
+			return translationGroups;
 		}
 	}
 }

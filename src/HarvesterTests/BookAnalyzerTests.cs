@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Xml.Linq;
 using BloomHarvester;
 using NUnit.Framework;
@@ -205,6 +207,135 @@ namespace BloomHarvesterTests
 		{
 			Assert.That(_epubCheckAnalyzer.IsEpubSuitable(), Is.True, "Unmodified Basic Text & Picture pages should be suitable for Epub");
 			Assert.That(_epubCheckAnalyzer2.IsEpubSuitable(), Is.False, "Modified Basic Text & Picture page should not be suitable for Epub");
+		}
+
+		private string CreateHtmlForGetBookLevelTests(string page1Text)
+		{
+			string html =
+$@"<html>
+  <head><meta charset='UTF-8' /></head>
+  <body>
+	<div id='bloomDataDiv'>
+	  <div data-book='contentLanguage1' lang='*'>en</div>
+	</div>
+    <div class='bloom-page cover coverColor bloom-frontMatter frontCover outsideFrontCover side-right A5Portrait' data-page='required singleton' data-export='front-matter-cover' data-xmatter-page='frontCover' id='89a32796-8cf9-4b0f-a694-43a3d705f620' data-page-number=''>
+      <div class='pageLabel' lang='en' data-i18n='TemplateBooks.PageLabel.Front Cover'>Front Cover</div>
+		<div class='marginBox'>
+          <div class='bottomBlock'>
+			<div class='bottomTextContent'>
+			  <div class='creditsRow' data-hint='You may use this space for author/illustrator, or anything else.'>
+                <div class='bloom-translationGroup' data-default-languages='V'>
+                  <div class='bloom-editable smallCoverCredits Cover-Default-style' lang='en' contenteditable='true' data-book='smallCoverCredits'>
+					This is a bunch of really long text that is way too many words for a Level 1 book, but since it's not on a numbered page, shouldn't matter.
+				  </div>
+                </div>
+              </div>
+            </div>
+		  </div>
+		</div>
+	</div>
+    <div class='bloom-page numberedPage customPage bloom-combinedPage side-right A5Portrait bloom-monolingual' data-page='' id='002627bd-4853-487d-986a-88ea67e0f31c' data-pagelineage='adcd48df-e9ab-4a07-afd4-6a24d0398382' data-page-number='1' lang=''>
+      <div class='pageLabel' data-i18n='TemplateBooks.PageLabel.Basic Text &amp; Picture' lang='en'>Basic Text &amp; Picture</div>
+      <div class='marginBox'>
+        <div style='min-height: 42px;' class='split-pane horizontal-percent'>
+          <div class='split-pane-component position-top' style='bottom: 50%'>
+            <div class='split-pane-component-inner'>
+              <div title='placeHolder.png 6.58 KB 341 x 335 81 DPI (should be 300-600) Bit Depth: 32' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='placeHolder.png' alt='place holder'></img>
+                <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement'>
+				  <div class='bloom-editable' lang='en'>This is a bunch of really really long text that would bump it above Level 1, but it's in an imageDescription, which is also ignored.
+				  </div>
+				</div>
+              </div>
+            </div>
+          </div>
+          <div class='split-pane-divider horizontal-divider' style='bottom: 50%' />
+          <div class='split-pane-component position-bottom' style='height: 50%'>
+            <div class='split-pane-component-inner'>
+              <div class='bloom-translationGroup bloom-trailingElement' data-default-languages='auto'>
+				<div class='bloom-editable' lang='en'>{page1Text}</div>
+				<div class='bloom-editable' lang='es'>Este texto va a ser ignored porque no es en la lingua prima del libro. Uno dos tres cuatro cinco seis siete ocho nueve diaz.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+";
+
+			return html;
+		}
+
+		[TestCase(0)]
+		[TestCase(1)]
+		[TestCase(2)]
+		[TestCase(10)]
+		public void GetBookLevel_Level1Book(int numWords)
+		{
+			var list = new List<string>();
+			for (int i = 0; i < numWords; ++i)
+			{
+				list.Add((i).ToString());
+			}
+			string input = String.Join(" ", list);
+
+			string html = CreateHtmlForGetBookLevelTests($"<p>{input}</p>");
+
+			var analyzer = new BookAnalyzer(html, GetMetaData());
+			Assert.That(analyzer.GetBookComputedLevel(), Is.EqualTo(1));
+		}
+
+		[TestCase(11)]
+		[TestCase(25)]
+		public void GetBookLevel_Level2Book(int numWords)
+		{
+			var list = new List<string>();
+			for (int i = 0; i < numWords; ++i)
+			{
+				list.Add((i).ToString());
+			}
+			string input = String.Join(" ", list);
+
+			string html = CreateHtmlForGetBookLevelTests($"<p>{input}</p>");
+
+			var analyzer = new BookAnalyzer(html, GetMetaData());
+			Assert.That(analyzer.GetBookComputedLevel(), Is.EqualTo(2));
+		}
+
+		[TestCase(26)]
+		[TestCase(50)]
+		public void GetBookLevel_Level3Book(int numWords)
+		{
+			var list = new List<string>();
+			for (int i = 0; i < numWords; ++i)
+			{
+				list.Add((i).ToString());
+			}
+			string input = String.Join(" ", list);
+
+			string html = CreateHtmlForGetBookLevelTests(input);
+
+			var analyzer = new BookAnalyzer(html, GetMetaData());
+			Assert.That(analyzer.GetBookComputedLevel(), Is.EqualTo(3));
+		}
+
+		[TestCase(51)]
+		[TestCase(75)]
+		public void GetBookLevel_Level4Book(int numWords)
+		{
+			var list = new List<string>();
+			for (int i = 0; i < numWords; ++i)
+			{
+				list.Add((i).ToString());
+			}
+			string input = String.Join(" ", list);
+
+			string html = CreateHtmlForGetBookLevelTests(input);
+
+			var analyzer = new BookAnalyzer(html, GetMetaData());
+			Assert.That(analyzer.GetBookComputedLevel(), Is.EqualTo(4));
 		}
 
 		private const string kHtmlUnmodifiedPages = @"<html>

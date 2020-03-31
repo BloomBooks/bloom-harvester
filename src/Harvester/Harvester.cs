@@ -446,10 +446,13 @@ namespace BloomHarvester
 					{
 						var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
 						var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
+						book.Analyzer = analyzer;
 
 						isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book, harvestLogEntries);
 						if (isSuccessful)
 							UpdateSuitabilityofArtifacts(book, analyzer);
+
+						book.SetTags();
 					}
 				}
 

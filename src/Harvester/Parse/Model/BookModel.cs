@@ -31,6 +31,7 @@ namespace BloomHarvester.Parse.Model
 				"HarvestStartedAt",
 				"HarvestLogEntries",
 				"Features",
+				"Tags",
 				"Show"
 			});
 		}
@@ -89,6 +90,9 @@ namespace BloomHarvester.Parse.Model
 
 		[JsonProperty("features")]
 		public string[] Features { get; set; }
+
+		[JsonProperty("tags")]
+		public string[] Tags { get; set; }
 
 		/// <summary>
 		/// A json object used to limit what the Library shows the user for each book.

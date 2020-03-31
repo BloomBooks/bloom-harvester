@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using BloomHarvester.LogEntries;
@@ -23,6 +24,8 @@ namespace BloomHarvester
 
 		internal BookModel Model { get; set; }
 		protected IMonitorLogger _logger;
+
+		internal IBookAnalyzer Analyzer { get; set; }
 
 		/// <summary>
 		/// Determines whether any warnings regarding a book should be displayed to the user on Bloom Library
@@ -49,6 +52,115 @@ namespace BloomHarvester
 			}
 
 			return warnings;
+		}
+
+		/// <summary>
+		/// Determines and sets the tags for the book
+		/// e.g., computing the computedLevel of the book
+		/// Keeps any existing tags if they are not directly determined by this function
+		/// </summary>
+		internal bool SetTags()
+		{
+			Debug.Assert(this.Analyzer != null, "Analyzer must be set before calling SetTags");
+
+			var tagMap = this.GetTagDictionary();
+
+			var computedLevelValue = this.Analyzer.GetBookComputedLevel();
+			if (computedLevelValue <= 0)
+				return false;
+			ReplaceTagWithScalar(tagMap, "computedLevel", computedLevelValue.ToString());
+
+			this.SetTagsFromTagDictionary(tagMap);
+
+			return true;
+		}
+
+		/// <summary>
+		/// Turns the tag array into a Dictionary
+		/// This enables you to find which keys are present and how many times they occur
+		/// </summary>
+		private Dictionary<string, List<string>> GetTagDictionary()
+		{
+			var map = new Dictionary<string, List<string>>();
+
+			if (this.Model.Tags == null)
+				return map;
+
+			foreach (var tag in this.Model.Tags)
+			{
+				string[] fields = tag.Split(':');
+				string key = null;
+				string value = null;
+				if (fields.Length == 0)
+				{
+					continue;
+				}
+				else if (fields.Length == 1)
+				{
+					key = fields[0];
+				}
+				else if (fields.Length >= 2)
+				{
+					key = fields[0];
+					value = fields[1];
+				}
+
+				if (!map.TryGetValue(key, out List<string> valueList))
+				{
+					valueList = new List<string>();
+					map.Add(key, valueList);
+				}
+
+				if (value != null)
+				{
+					valueList.Add(value);
+				}
+			}
+
+			return map;
+		}
+
+		/// <summary>
+		/// Given a tag dictionary, accordingly sets the Tags field in the model.
+		/// </summary>
+		private void SetTagsFromTagDictionary(Dictionary<string, List<string>> tagDictionary)
+		{
+			// Note: Assumes that we don't need to preserve order when writing back into it
+			if (tagDictionary == null)
+			{
+				this.Model.Tags = new string[0];
+				return;
+			}
+
+			var newTags = new List<string>();
+			foreach (var kvp in tagDictionary)
+			{
+				string tagKey = kvp.Key;
+				List<string> tagValueList = kvp.Value;
+
+				foreach (var tagValue in tagValueList)
+				{
+					string newTagStr = $"{tagKey}:{tagValue}";
+					newTags.Add(newTagStr);
+				}
+			}
+
+			this.Model.Tags = newTags.ToArray();
+		}
+
+		/// <summary>
+		/// Given a tag (with only one entry for that key), udpates the dictionary with the new value of that tag
+		/// (Or adds the tag if it doesn't exist in the dictionary yet)
+		/// </summary>
+		/// <param name="tagDictionary">The dictionary structure representing all the tag key/value pairs</param>
+		/// <param name="tagKey">The key of the tag</param>
+		/// <param name="tagValue">The new value</param>
+		private void ReplaceTagWithScalar(Dictionary<string, List<string>> tagDictionary, string tagKey, string tagValue)
+		{
+			var newValueList = new List<string>(1);
+			newValueList.Add(tagValue);
+
+			tagDictionary[tagKey] = newValueList;
 		}
 
 		/// <summary>
