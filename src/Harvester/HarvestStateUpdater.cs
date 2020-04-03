@@ -22,9 +22,8 @@ namespace BloomHarvester
 			updateOp.UpdateFieldWithString(BookModel.kHarvestStateField, newState.ToString());
 
 			EnvironmentSetting environment = EnvironmentUtils.GetEnvOrFallback(parseDbEnvironment, EnvironmentSetting.Default);
-			var parseClient = new ParseClient(environment);
+			var parseClient = new ParseClient(environment, null);
 			parseClient.UpdateObject(BookModel.GetStaticParseClassName(), objectId, updateOp.ToJson());
-			parseClient.FlushBatchableOperations();
 
 			Console.Out.WriteLine($"Environment={parseDbEnvironment}: Sent request to update object \"{objectId}\" with harvestState={newState}");
 		}

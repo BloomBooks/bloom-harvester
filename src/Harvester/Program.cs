@@ -8,6 +8,7 @@ using BloomHarvester.WebLibraryIntegration;
 using CommandLine;
 
 [assembly: InternalsVisibleTo("BloomHarvesterTests")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace BloomHarvester
 {
@@ -76,7 +77,7 @@ namespace BloomHarvester
 			}
 			catch (Exception e)
 			{
-				YouTrackIssueConnector.ReportExceptionToYouTrack(e, "An exception was thrown which was not handled by the program.", null, EnvironmentSetting.Unknown);
+				YouTrackIssueConnector.Instance.ReportException(e, "An exception was thrown which was not handled by the program.", null, EnvironmentSetting.Unknown);
 				throw;
 			}
 		}

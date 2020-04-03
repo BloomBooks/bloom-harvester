@@ -18,7 +18,8 @@ namespace BloomHarvester.Logger
 	class AzureMonitorLogger : IMonitorLogger, IDisposable
 	{
 		private TelemetryClient _telemetry = new TelemetryClient();
-		private IMonitorLogger _fileLogger;	// log to both Azure as well as something on the local filesystem, which would have more real-time access
+		private IMonitorLogger _fileLogger; // log to both Azure as well as something on the local filesystem, which would have more real-time access
+		private IIssueReporter _issueReporter = YouTrackIssueConnector.Instance;
 
 		public AzureMonitorLogger(EnvironmentSetting environment, string harvesterId)
 		{
@@ -42,7 +43,7 @@ namespace BloomHarvester.Logger
 			}
 			catch (ArgumentNullException e)
 			{
-				YouTrackIssueConnector.ReportExceptionToYouTrack(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null, environment);
+				_issueReporter.ReportException(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null, environment);
 			}
 
 			_telemetry.Context.User.Id = "BloomHarvester " + harvesterId;

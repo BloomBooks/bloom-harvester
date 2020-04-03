@@ -8,7 +8,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BloomHarvesterTests.Stubs;
+using NSubstitute;
 
 namespace BloomHarvesterTests
 {
@@ -128,8 +128,8 @@ namespace BloomHarvesterTests
 				Tags = initialValue
 			});
 
-			var stubAnalyzer = new StubBookAnalyzer();
-			stubAnalyzer.NextGetBookComputedLevelResult = 1;
+			var stubAnalyzer = Substitute.For<IBookAnalyzer>();
+			stubAnalyzer.GetBookComputedLevel().Returns(1);
 			book.Analyzer = stubAnalyzer;
 
 			book.SetTags();
@@ -145,8 +145,8 @@ namespace BloomHarvesterTests
 				Tags = new string[] { "system:Incoming" }
 			});
 
-			var stubAnalyzer = new StubBookAnalyzer();
-			stubAnalyzer.NextGetBookComputedLevelResult = 2;
+			var stubAnalyzer = Substitute.For<IBookAnalyzer>();
+			stubAnalyzer.GetBookComputedLevel().Returns(2);
 			book.Analyzer = stubAnalyzer;
 
 			book.SetTags();
@@ -162,8 +162,8 @@ namespace BloomHarvesterTests
 				Tags = new string[] { "computedLevel:2" }
 			});
 
-			var stubAnalyzer = new StubBookAnalyzer();
-			stubAnalyzer.NextGetBookComputedLevelResult = 3;
+			var stubAnalyzer = Substitute.For<IBookAnalyzer>();
+			stubAnalyzer.GetBookComputedLevel().Returns(3);
 			book.Analyzer = stubAnalyzer;
 
 			book.SetTags();

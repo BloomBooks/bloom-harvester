@@ -38,7 +38,7 @@ namespace BloomHarvester
 		/// </summary>
 		private void BatchUpdateStates()
 		{
-			IEnumerable<BookModel> bookList = _parseClient.GetBooks(out bool didExitPrematurely, _options.QueryWhere);
+			IEnumerable<BookModel> bookList = this.ParseClient.GetBooks(out bool didExitPrematurely, _options.QueryWhere);
 
 			if (didExitPrematurely)
 			{
@@ -59,19 +59,13 @@ namespace BloomHarvester
 				if (!IsDryRun)
 				{
 					bookModel.HarvestState = newStateStr;
-					bookModel.FlushUpdateToDatabase(_parseClient);
+					bookModel.FlushUpdateToDatabase(this.ParseClient);
 				}
 			}
 
 			_logger.LogInfo($"{bookList.Count()} objects processed.");
-			if (!IsDryRun)
-			{
-				_parseClient.FlushBatchableOperations();
-			}
-			else
-			{
+			if (IsDryRun)
 				_logger.LogInfo("Dry run done. (No updates were actually made)");
-			}
 		}
 	}
 }
