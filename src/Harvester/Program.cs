@@ -8,6 +8,7 @@ using BloomHarvester.WebLibraryIntegration;
 using CommandLine;
 
 [assembly: InternalsVisibleTo("BloomHarvesterTests")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace BloomHarvester
 {

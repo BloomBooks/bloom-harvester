@@ -47,7 +47,7 @@ namespace BloomHarvester.Parse.Model
 		/// </summary>
 		/// <param name="database"></param>
 		/// <param name="isReadOnly"></param>
-		public void FlushUpdateToDatabase(ParseClient database, bool isReadOnly = false)
+		public void FlushUpdateToDatabase(IParseClient database, bool isReadOnly = false)
 		{
 			// ENHANCE: I suppose if desired, we could try to re-read the row in the database and make sure we compare against the most recent veresion.
 			// Dunno if that makes life any better when 2 sources are trying to update it.
@@ -111,7 +111,12 @@ namespace BloomHarvester.Parse.Model
 					// We know that everything here is supposed to be either a FieldInfo or PropertyInfo,
 					// so if it's not FieldInfo, it should be a propertyInfo
 					var propertyInfo = (PropertyInfo)memberInfo;
-					oldValue = propertyInfo.GetValue(this.DatabaseVersion);
+
+					if (this.DatabaseVersion == null)
+						oldValue = null;
+					else
+						oldValue = propertyInfo.GetValue(this.DatabaseVersion);
+
 					newValue = propertyInfo.GetValue(this);
 				}
 

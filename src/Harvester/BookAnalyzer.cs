@@ -15,6 +15,11 @@ namespace BloomHarvester
 {
 	internal interface IBookAnalyzer
 	{
+		string WriteBloomCollection(string bookFolder);
+
+		bool IsBloomReaderSuitable();
+		bool IsEpubSuitable();
+
 		int GetBookComputedLevel();
 	}
 

@@ -3,22 +3,22 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Web;
 using Bloom.WebLibraryIntegration;
 using BloomHarvester.LogEntries;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
+using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomTemp;
 using Newtonsoft.Json.Linq;
-using BookModel = BloomHarvester.Parse.Model.BookModel;
+
 
 namespace BloomHarvester
 {
 	// This class is responsible for coordinating the running of the application logic
-	public class Harvester : IDisposable
+	internal class Harvester : IDisposable
 	{
 		private const int kCreateArtifactsTimeoutSecs = 300;
 		private const int kGetFontsTimeoutSecs = 20;
@@ -26,13 +26,14 @@ namespace BloomHarvester
 
 		private int _delayAfterEmptyRunSecs = 300;
 		protected IMonitorLogger _logger;
-		protected ParseClient _parseClient;
+		internal IParseClient ParseClient { get; set; }
 		private EnvironmentSetting _parseDBEnvironment;
-		private BookTransfer _transfer;
+		internal IBookTransfer Transfer { get; set; }
 		protected string _downloadBucketName;
 		protected string _uploadBucketName;
 		protected HarvesterS3Client _bloomS3Client;
 		protected HarvesterS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
+		internal IBloomCliInvoker BloomCli { get; set; }
 		protected HarvesterOptions _options;
 		private HashSet<string> _cumulativeFailedBookIdSet = new HashSet<string>();
 		private HashSet<string> _missingFonts = new HashSet<string>();
@@ -78,8 +79,7 @@ namespace BloomHarvester
 
 			// Setup Parse Client and S3 Clients
 			_parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
-			_parseClient = new ParseClient(_parseDBEnvironment);
-			_parseClient.Logger = _logger;
+			this.ParseClient = new ParseClient(_parseDBEnvironment, _logger);
 
 			switch (_parseDBEnvironment)
 			{
@@ -99,13 +99,15 @@ namespace BloomHarvester
 					break;
 			}
 			_bloomS3Client = new HarvesterS3Client(_downloadBucketName, _parseDBEnvironment, true);
-			_transfer = new BookTransfer(_parseClient,
+			Transfer = new HarvesterBookTransfer((BloomParseClient)this.ParseClient,
 				bloomS3Client: _bloomS3Client,
-				htmlThumbnailer: null,
-				bookDownloadStartingEvent: new Bloom.BookDownloadStartingEvent());
+				htmlThumbnailer: null);
 
 			_s3UploadClient = new HarvesterS3Client(_uploadBucketName, _parseDBEnvironment, false);
 
+			// More setup
+			BloomCli = new BloomCliInvoker(_logger);
+			
 			// Setup a handler that is called when the console is closed
 			consoleExitHandler = new ConsoleEventDelegate(ConsoleEventCallback);
 			SetConsoleCtrlHandler(consoleExitHandler, add: true);
@@ -113,7 +115,6 @@ namespace BloomHarvester
 
 		public void Dispose()
 		{
-			_parseClient.FlushBatchableOperations();
 			_logger.Dispose();
 		}
 
@@ -135,7 +136,7 @@ namespace BloomHarvester
 				{
 					var updateOp = BookModel.GetNewBookUpdateOperation();
 					updateOp.UpdateFieldWithString(BookModel.kHarvestStateField, Parse.Model.HarvestState.Aborted.ToString());
-					_parseClient.UpdateObject(BookModel.GetStaticParseClassName(), _currentBookId, updateOp.ToJson());
+					this.ParseClient.UpdateObject(BookModel.GetStaticParseClassName(), _currentBookId, updateOp.ToJson());
 					return true;
 				}
 			}
@@ -180,7 +181,7 @@ namespace BloomHarvester
 					var methodStopwatch = new Stopwatch();
 					methodStopwatch.Start();
 
-					IEnumerable<BookModel> bookList = _parseClient.GetBooks(out bool didExitPrematurely, combinedWhereJson);
+					IEnumerable<BookModel> bookList = this.ParseClient.GetBooks(out bool didExitPrematurely, combinedWhereJson);
 
 					if (didExitPrematurely && !_options.Loop)
 					{
@@ -256,7 +257,6 @@ namespace BloomHarvester
 						}
 					}
 
-					_parseClient.FlushBatchableOperations();
 					methodStopwatch.Stop();
 					Console.Out.WriteLine($"Harvest{_options.Mode} took {(methodStopwatch.ElapsedMilliseconds / 1000.0):0.0} seconds.");
 
@@ -388,7 +388,7 @@ namespace BloomHarvester
 			return jsonString;
 		}
 				
-		private bool ProcessOneBook(Book book)
+		internal bool ProcessOneBook(Book book)
 		{
 			bool isSuccessful = true;
 			try
@@ -409,7 +409,7 @@ namespace BloomHarvester
 				{
 					_currentBookId = book.Model.ObjectId;					
 				}
-				book.Model.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
+				book.Model.FlushUpdateToDatabase(this.ParseClient, _options.ReadOnly);
 
 				// Download the book
 				_logger.TrackEvent("Download Book");
@@ -426,7 +426,7 @@ namespace BloomHarvester
 				}
 				else
 				{
-					downloadBookDir = _transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
+					downloadBookDir = this.Transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
 				}
 
 				// Process the book
@@ -442,7 +442,7 @@ namespace BloomHarvester
 
 					if (!_options.ReadOnly)
 					{
-						var analyzer = BookAnalyzer.FromFolder(downloadBookDir);
+						var analyzer = GetAnalyzer(downloadBookDir);
 						var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
 						book.Analyzer = analyzer;
 
@@ -468,7 +468,7 @@ namespace BloomHarvester
 
 				// Write the updates
 				_currentBookId = null;
-				book.Model.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
+				book.Model.FlushUpdateToDatabase(this.ParseClient, _options.ReadOnly);
 
 				if (!_options.SkipDownload)
 				{
@@ -501,7 +501,7 @@ namespace BloomHarvester
 						}
 						var logEntry = new LogEntry(LogLevel.Error, LogType.ProcessBookError, errorMessage);
 						book.Model.HarvestLogEntries.Add(logEntry.ToString());
-						book.Model.FlushUpdateToDatabase(_parseClient);
+						book.Model.FlushUpdateToDatabase(this.ParseClient);
 					}
 					catch (Exception)
 					{
@@ -513,7 +513,12 @@ namespace BloomHarvester
 			return isSuccessful;
 		}
 
-		private void UpdateSuitabilityofArtifacts(Book book, BookAnalyzer analyzer)
+		internal virtual IBookAnalyzer GetAnalyzer(string downloadBookDir)
+		{
+			return BookAnalyzer.FromFolder(downloadBookDir);
+		}
+
+		private void UpdateSuitabilityofArtifacts(Book book, IBookAnalyzer analyzer)
 		{
 			if (!_options.SkipUploadEPub)
 			{
@@ -748,7 +753,7 @@ namespace BloomHarvester
 		
 
 		// Returns true if at least one font is missing
-		private List<LogEntry> CheckForMissingFontErrors(string bookPath, Book book)
+		internal virtual List<LogEntry> CheckForMissingFontErrors(string bookPath, Book book)
 		{
 			var harvestLogEntries = new List<LogEntry>();
 
@@ -801,7 +806,7 @@ namespace BloomHarvester
 			using (var reportFile = SIL.IO.TempFile.CreateAndGetPathButDontMakeTheFile())
 			{
 				string bloomArguments = $"getfonts --bookpath \"{bookPath}\" --reportpath \"{reportFile.Path}\"";
-				bool subprocessSuccess = StartAndWaitForBloomCli(bloomArguments, kGetFontsTimeoutSecs * 1000, out int exitCode, out string stdOut, out string stdError);
+				bool subprocessSuccess = BloomCli.StartAndWaitForBloomCli(bloomArguments, kGetFontsTimeoutSecs * 1000, out int exitCode, out string stdOut, out string stdError);
 
 				if (!subprocessSuccess)
 				{
@@ -901,7 +906,7 @@ namespace BloomHarvester
 					// Start a Bloom command line in a separate process
 					var bloomCliStopwatch = new Stopwatch();
 					bloomCliStopwatch.Start();
-					bool exitedNormally = StartAndWaitForBloomCli(bloomArguments, kCreateArtifactsTimeoutSecs * 1000, out int bloomExitCode, out string bloomStdOut, out string bloomStdErr);
+					bool exitedNormally = BloomCli.StartAndWaitForBloomCli(bloomArguments, kCreateArtifactsTimeoutSecs * 1000, out int bloomExitCode, out string bloomStdOut, out string bloomStdErr);
 					bloomCliStopwatch.Stop();
 
 					string errorDescription = "";
@@ -919,7 +924,7 @@ namespace BloomHarvester
 							string errorMessage = $"Bloom Command Line error: CreateArtifacts failed with exit code: {bloomExitCode} ({errorInfo}).";
 							errorDescription += errorMessage;
 
-							var logEntry = new LogEntry(LogLevel.Error, LogType.TimeoutError, errorMessage);
+							harvestLogEntries.Add(new LogEntry(LogLevel.Error, LogType.BloomCLIError, errorMessage));
 						}
 					}
 					else
@@ -927,7 +932,7 @@ namespace BloomHarvester
 						success = false;
 						string errorMessage = $"Bloom Command Line error: CreateArtifacts terminated because it exceeded {kCreateArtifactsTimeoutSecs} seconds.";
 						errorDescription += errorMessage;
-						var logEntry = new LogEntry(LogLevel.Error, LogType.TimeoutError, errorMessage);
+						harvestLogEntries.Add(new LogEntry(LogLevel.Error, LogType.TimeoutError, errorMessage));
 					}
 
 					if (success && !_options.SkipUploadBloomDigitalArtifacts)
@@ -982,78 +987,6 @@ namespace BloomHarvester
 			}
 
 			return success;
-		}
-
-		/// <summary>
-		/// Starts a Bloom instance in a new process and waits up to the specified amount of time for it to finish.
-		/// </summary>
-		/// <param name="arguments">The arguments to pass to Bloom. (Don't include the name of the executable.)</param>
-		/// <param name="timeoutMilliseconds">After this amount of time, the process will be killed if it's still running</param>
-		/// <param name="exitCode">Out parameter. The exit code of the process.</param>
-		/// <param name="standardOutput">Out parameter. The standard output of the process.</param>
-		/// <param name="standardError">Out parameter. The standard error of the process.</param>
-		/// <returns>Returns true if the process ended by itself without timeout. Returns false if the process was forcibly terminated.</returns>
-		public bool StartAndWaitForBloomCli(string arguments, int timeoutMilliseconds, out int exitCode, out string standardOutput, out string standardError)
-		{
-			_logger.LogVerbose("Starting Bloom CLI process");
-			_logger.LogVerbose("Bloom CLI arguments: " + arguments);
-			var process = new Process()
-			{
-				StartInfo = new ProcessStartInfo()
-				{
-					FileName = "Bloom.exe",
-					Arguments = arguments,
-					UseShellExecute = false,
-					RedirectStandardOutput = true,
-					RedirectStandardError = true
-				}
-			};
-
-			StringBuilder processOutputBuffer = new StringBuilder();
-			process.OutputDataReceived += new DataReceivedEventHandler((sender, e) => { processOutputBuffer.Append(e.Data); });
-
-			StringBuilder processErrorBuffer = new StringBuilder();
-			process.ErrorDataReceived += new DataReceivedEventHandler((sender, e) => { processErrorBuffer.Append(e.Data); });
-
-			process.Start();
-
-			// These ReadToEnd() calls are filled with deadlock potential if you write them naively.
-			// See this official documentation for details on proper usage:
-			// https://docs.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.redirectstandardoutput?redirectedfrom=MSDN&view=netframework-4.8#System_Diagnostics_ProcessStartInfo_RedirectStandardOutput
-			//
-			// Highlights: You shouldn't have WaitForExit() followed by ReadToEnd(). It will deadlock if the new process writes enough to fill the buffer.
-			//             You shouldn't have ReadToEnd() of both stdout and stderr. It will deadlock if the new process writes enough to fill the buffer.
-			//             Calling ReadToEnd() will deadlock if the new process crashes.
-			process.BeginOutputReadLine();
-			process.BeginErrorReadLine();
-
-			// Block and wait for it to finish
-			bool hasExited = process.WaitForExit(timeoutMilliseconds);
-			standardOutput = processOutputBuffer.ToString();
-			standardError = processErrorBuffer.ToString();
-
-			bool isExitedNormally = true;
-			if (!hasExited)
-			{
-				try
-				{
-					process.Kill();
-					isExitedNormally = false;
-				}
-				catch
-				{
-					// Just make a best effort to kill the process, but no need to throw exception if it didn't work
-				}
-			}
-
-			exitCode = process.ExitCode;
-
-			if (!String.IsNullOrWhiteSpace(standardOutput))
-				Console.Out.WriteLine("Standard out: " + standardOutput);
-			if (!String.IsNullOrWhiteSpace(standardError))
-				Console.Out.WriteLine("Standard error: " + standardError);
-
-			return isExitedNormally;
 		}
 
 		/// <summary>
