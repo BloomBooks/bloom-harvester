@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
-using YouTrackSharp.Infrastructure;
+using YouTrackSharp;
 using YouTrackSharp.Issues;
 
 
@@ -20,8 +20,15 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 
 	internal class YouTrackIssueConnector : IIssueReporter
 	{
+		private IIssuesService _issuesService;
 		private YouTrackIssueConnector()
 		{
+#if !DEBUG
+			// ENHANCE: Maybe creating the issuesService can go in the constructor instead?
+			const string TokenPiece1 = @"YXV0b19yZXBvcnRfY3JlYXRvcg==.NzQtMA==.V9k0yNUN7Df5eqo4QEk5N4BBKqmEHV";
+			var youTrackConnection = new BearerTokenConnection($"https://{_issueTrackingBackend}/youtrack/", $"perm:{TokenPiece1}");
+			_issuesService = youTrackConnection.CreateIssuesService();
+#endif
 		}
 
 		private static readonly string _issueTrackingBackend = "issues.bloomlibrary.org";
@@ -78,7 +85,7 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 			}
 		}
 
-		private static string SubmitToYouTrack(string summary, string description, string youTrackProjectKey)
+		private string SubmitToYouTrack(string summary, string description, string youTrackProjectKey)
 		{
 			bool isSilenced = AlertManager.Instance.RecordAlertAndCheckIfSilenced();
 			if (isSilenced)
@@ -88,15 +95,11 @@ namespace BloomHarvester.WebLibraryIntegration   // Review: Could posisibly put 
 				return "";
 			}
 
-			Connection youTrackConnection = new Connection(_issueTrackingBackend, 0, true, "youtrack");
-			youTrackConnection.Authenticate("auto_report_creator", "thisIsInOpenSourceCode");
-			var issueManagement = new IssueManagement(youTrackConnection);
-			dynamic youTrackIssue = new Issue();
-			youTrackIssue.ProjectShortName = youTrackProjectKey;
-			youTrackIssue.Type = "Awaiting Classification";
-			youTrackIssue.Summary = summary;
-			youTrackIssue.Description = description;
-			string youTrackIssueId = issueManagement.CreateIssue(youTrackIssue);
+			var youTrackIssue = new Issue() { Summary = summary, Description = description };
+			youTrackIssue.SetField("Type", "Awaiting Classification");
+
+			// ENHANCE: We could async/await this instead, if we wanted to
+			string youTrackIssueId = _issuesService.CreateIssue(youTrackProjectKey, youTrackIssue).Result;
 			
 			return youTrackIssueId;
 		}
