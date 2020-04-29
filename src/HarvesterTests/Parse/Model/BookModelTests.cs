@@ -10,6 +10,20 @@ namespace BloomHarvesterTests.Parse.Model
 	[TestFixture]
 	public class BookModelTests
 	{
+		internal const string kDefaultObjectId = "FakeObjectId";
+		internal const string kDefaultBaseUrl = "https://s3.amazonaws.com/FakeBucket/fakeUploader%40gmail.com%2fFakeGuid%2fFakeTitle%2f";
+		internal const string kDefaultTitle = "FakeTitle";
+
+		/// <summary>
+		/// A convenience method to create a default book, which has no need of setting readonly parameters
+		/// If you require setting readonly parameters, call BookModel's non-default constructor instead
+		/// </summary>
+		/// <returns>A BookModel object that has the unittests default values for the required fields</returns>
+		internal static BookModel CreateBookModel()
+		{
+			return new BookModel(kDefaultBaseUrl, kDefaultTitle) { ObjectId = kDefaultObjectId } ;
+		}
+
 		[TestCase("HarvestState")]
 		[TestCase("HarvesterId")]
 		[TestCase("HarvesterMajorVersion")]
@@ -27,7 +41,33 @@ namespace BloomHarvesterTests.Parse.Model
 
 			Assert.That(writeableMembers.Contains(expectedMemberName), Is.True);
 		}
-		
+
+		[Test]
+		public void BookModel_GetParseKeys_ContainsImportantKeys()
+		{
+			var parseKeys = BookModel.GetParseKeys();
+
+			Assert.That(parseKeys.Count, Is.GreaterThanOrEqualTo(1));
+
+			var parseKeySet = new HashSet<string>(parseKeys);
+			Assert.That(parseKeySet.Contains("objectId"), "objectId: Parent class keys should also be returned");
+
+			Assert.That(parseKeySet.Contains("harvestState"), "harvestState");
+			Assert.That(parseKeySet.Contains("harvesterMajorVersion"), "harvesterMajorVersion");
+			Assert.That(parseKeySet.Contains("harvesterMinorVersion"), "harvesterMinorVersion");
+			Assert.That(parseKeySet.Contains("harvestLog"), "harvestLog");
+			Assert.That(parseKeySet.Contains("harvestStartedAt"), "harvestStartedAt");
+
+			Assert.That(parseKeySet.Contains("baseUrl"), "baseUrl");
+			Assert.That(parseKeySet.Contains("inCirculation"), "inCirculation");
+			Assert.That(parseKeySet.Contains("lastUploaded"), "lastUploaded");
+			Assert.That(parseKeySet.Contains("phashOfFirstContentImage"), "pHash");
+			Assert.That(parseKeySet.Contains("show"), "show");
+			Assert.That(parseKeySet.Contains("tags"), "tags");
+			Assert.That(parseKeySet.Contains("title"), "title");
+
+			// ENHANCE: Add as many of the other keys as you want to verify.
+		}
 		[Test]
 		public void BookModel_NonEmptyTag_SerializedInJson()
 		{
@@ -56,7 +96,7 @@ namespace BloomHarvesterTests.Parse.Model
 
 		#region GetBloomLibraryBookDetailLink
 		[Test]
-		public void Book_GetBloomLibraryBookDetailLink_Prod_PopulatesLink()
+		public void BookModel_GetBloomLibraryBookDetailLink_Prod_PopulatesLink()
 		{
 			var bookModel = new BookModel() { ObjectId = "myObjectId" };
 
@@ -66,7 +106,7 @@ namespace BloomHarvesterTests.Parse.Model
 		}
 
 		[Test]
-		public void Book_GetBloomLibraryBookDetailLink_Dev_PopulatesLink()
+		public void BookModel_GetBloomLibraryBookDetailLink_Dev_PopulatesLink()
 		{
 			var bookModel = new BookModel() { ObjectId = "myObjectId" };
 
@@ -78,7 +118,7 @@ namespace BloomHarvesterTests.Parse.Model
 		[TestCase(null)]
 		[TestCase("")]
 		[TestCase(" ")]
-		public void Book_GetBloomLibraryBookDetailLink_BadInput_ErrorReported(string badObjectId)
+		public void BookModel_GetBloomLibraryBookDetailLink_BadInput_ErrorReported(string badObjectId)
 		{
 			var book = new BookModel() { ObjectId = badObjectId };
 

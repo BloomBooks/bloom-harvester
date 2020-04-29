@@ -2,6 +2,7 @@
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
+using BloomHarvesterTests.Parse.Model;
 using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -16,7 +17,12 @@ namespace BloomHarvesterTests
 	[TestFixture]
 	class BookTests
 	{
-		private static Book CreateBook(BookModel model)
+		internal static Book CreateDefaultBook()
+		{
+			return new Book(BookModelTests.CreateBookModel(), new NullLogger());
+		}
+
+		internal static Book CreateBook(BookModel model)
 		{
 			return new Book(model, new NullLogger());
 		}

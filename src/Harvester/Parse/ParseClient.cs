@@ -283,7 +283,8 @@ namespace BloomHarvester.Parse
 		{
 			var request = new RestRequest("classes/books", Method.GET);
 			SetCommonHeaders(request);
-			request.AddParameter("keys", "object_id,baseUrl,harvestState,harvesterMajorVersion,harvesterMinorVersion,harvestLog,harvestStartedAt,show,title,inCirculation,langPointers,uploader,features,tags,phashOfFirstContentImage");
+			string keysToRetrieve = String.Join(",", BookModel.GetParseKeys());
+			request.AddParameter("keys", keysToRetrieve);
 
 			if (!String.IsNullOrEmpty(whereCondition))
 			{

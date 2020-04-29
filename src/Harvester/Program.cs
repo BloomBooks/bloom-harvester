@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -55,6 +55,7 @@ namespace BloomHarvester
 				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions>(args)
 					.WithParsed<HarvesterOptions>(options =>
 					{
+						options.ValidateOptions();
 						Harvester.RunHarvest(options);
 					})
 					.WithParsed<UpdateStateInParseOptions>(options =>
@@ -77,7 +78,7 @@ namespace BloomHarvester
 			}
 			catch (Exception e)
 			{
-				YouTrackIssueConnector.Instance.ReportException(e, "An exception was thrown which was not handled by the program.", null, EnvironmentSetting.Unknown);
+				YouTrackIssueConnector.GetInstance(EnvironmentSetting.Unknown).ReportException(e, "An exception was thrown which was not handled by the program.", null);
 				throw;
 			}
 		}
@@ -120,7 +121,10 @@ namespace BloomHarvester
 		[Option("loopWaitSeconds", Required = false, Default = 300, HelpText = "If specified, and loop mode is on, then specifies the number of seconds to wait between loop iterations if nothing was previously processed")]
 		public int LoopWaitSeconds { get; set; }
 
-		[Option("skipDownload", Required = false, Default = false, HelpText = "If true, will skip downloading the book if it already exists.")]
+		[Option("forceDownload", Required = false, Default = false,  HelpText = "If true, will force the re-downloading of a book, even if it already exists.")]
+		public bool ForceDownload { get; set; }
+
+		[Option("skipDownload", Required = false, Default = false, HelpText = "If true, will skip downloading the book but ONLY if it already exists.")]
 		public bool SkipDownload { get; set; }
 
 		[Option("skipUploadBloomDigitalArtifacts", Required = false, Default = false, HelpText = "If true, will prevent the .bloomd and Bloom Digital (Read on Bloom Library) artifacts from being uploaded.")]
@@ -149,6 +153,14 @@ namespace BloomHarvester
 				$"count: {Count}\n" +
 				$"skipUploadBloomDigitalArtifacts: {SkipUploadBloomDigitalArtifacts}\n" +
 				$"skipUploadEPub: {SkipUploadEPub}";
+		}
+
+		public void ValidateOptions()
+		{
+			if (ForceDownload && SkipDownload)
+			{
+				throw new ArgumentException("ForceDownload and SkipDownload are mutually exclusive, but both were set.");
+			}
 		}
 	}
 

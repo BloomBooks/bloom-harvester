@@ -19,10 +19,12 @@ namespace BloomHarvester.Logger
 	{
 		private TelemetryClient _telemetry = new TelemetryClient();
 		private IMonitorLogger _fileLogger; // log to both Azure as well as something on the local filesystem, which would have more real-time access
-		private IIssueReporter _issueReporter = YouTrackIssueConnector.Instance;
+		private IIssueReporter _issueReporter;
 
 		public AzureMonitorLogger(EnvironmentSetting environment, string harvesterId)
 		{
+			_issueReporter = YouTrackIssueConnector.GetInstance(environment);
+
 			// Get the Instrumentation Key for Azure from an environment variable.
 			string environmentVarName = "BloomHarvesterAzureAppInsightsKeyDev";
 			if (environment == EnvironmentSetting.Test)
@@ -43,7 +45,7 @@ namespace BloomHarvester.Logger
 			}
 			catch (ArgumentNullException e)
 			{
-				_issueReporter.ReportException(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null, environment);
+				_issueReporter.ReportException(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null);
 			}
 
 			_telemetry.Context.User.Id = "BloomHarvester " + harvesterId;

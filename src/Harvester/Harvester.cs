@@ -45,10 +45,11 @@ namespace BloomHarvester
 		protected readonly IS3Client _bloomS3Client;
 		protected readonly IS3Client _s3UploadClient;  // Note that we upload books to a different bucket than we download them from, so we have a separate client.
 		private readonly IBookTransfer _transfer;
-		protected readonly IIssueReporter _issueReporter = YouTrackIssueConnector.Instance;
+		protected readonly IIssueReporter _issueReporter;
 		protected readonly IBloomCliInvoker _bloomCli;
 		private readonly IFontChecker _fontChecker;
 		protected readonly IMonitorLogger _logger;
+		private readonly DiskSpaceManager _diskSpaceManager;
 		protected readonly IFileIO _fileIO;
 
 		internal bool IsDebug { get; set; }
@@ -73,10 +74,11 @@ namespace BloomHarvester
 			IS3Client s3uploadClient,
 			IBookTransfer transfer,
 			IBloomCliInvoker bloomCli,
+			IDiskSpaceManager diskSpaceManager,
 			IFontChecker fontChecker
 			) args)
 			:this(options, args.parseDBEnvironment, args.identifier, args.parseClient, args.s3DownloadClient, args.s3uploadClient, args.transfer,
-				 args.issueReporter, args.logger, args.bloomCli, args.fontChecker,				 
+				 args.issueReporter, args.logger, args.bloomCli, args.fontChecker, args.diskSpaceManager,
 				 fileIO: new FileIO())
 		{
 		}
@@ -109,6 +111,7 @@ namespace BloomHarvester
 			IMonitorLogger logger,
 			IBloomCliInvoker bloomCliInvoker,
 			IFontChecker fontChecker,
+			IDiskSpaceManager diskSpaceManager,
 			IFileIO fileIO)
 		{
 			// Just copying from parameters
@@ -162,14 +165,15 @@ namespace BloomHarvester
 			IS3Client s3uploadClient,
 			IBookTransfer transfer,
 			IBloomCliInvoker bloomCli,
+			IDiskSpaceManager diskSpaceManager,
 			IFontChecker fontChecker
 		) GetConstructorArguments(HarvesterOptions options)
 		{
 			// Safer to get this issueReporter stuff out of the way as first, in case any construction code generates a YouTrack issue.
-			var issueReporter = YouTrackIssueConnector.Instance;
+			var parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
+			var issueReporter = YouTrackIssueConnector.GetInstance(parseDBEnvironment);
 			issueReporter.Disabled = options.SuppressErrors;
 
-			var parseDBEnvironment = EnvironmentUtils.GetEnvOrFallback(options.ParseDBEnvironment, options.Environment);
 			var logEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
 
 			string identifier = $"{Environment.MachineName}-{parseDBEnvironment.ToString()}";
@@ -186,7 +190,11 @@ namespace BloomHarvester
 
 			var bloomCli = new BloomCliInvoker(logger);
 			var fontChecker = new FontChecker(kGetFontsTimeoutSecs, bloomCli, logger);
-			return (issueReporter, parseDBEnvironment, identifier, logger, parseClient, s3DownloadClient, s3UploadClient, transfer, bloomCli, fontChecker);
+
+			var driveInfo = GetHarvesterDrive();
+			var diskSpaceManager = new DiskSpaceManager(driveInfo, logger, issueReporter);
+
+			return (issueReporter, parseDBEnvironment, identifier, logger, parseClient, s3DownloadClient, s3UploadClient, transfer, bloomCli, diskSpaceManager, fontChecker);
 		}
 
 		/// <summary>
@@ -377,7 +385,7 @@ namespace BloomHarvester
 						}
 						catch (Exception e)
 						{
-							_issueReporter.ReportException(e, $"Unhandled exception thrown while running Harvest() function on a book.", bookModel, _parseDBEnvironment, exitImmediately: false);
+							_issueReporter.ReportException(e, $"Unhandled exception thrown while running Harvest() function on a book.", bookModel, exitImmediately: false);
 						}
 					}
 
@@ -445,7 +453,7 @@ namespace BloomHarvester
 				{
 					try
 					{
-						_issueReporter.ReportException(e, $"Unhandled exception thrown while running Harvest() function.", null, _parseDBEnvironment, exitImmediately: false);
+						_issueReporter.ReportException(e, $"Unhandled exception thrown while running Harvest() function.", null, exitImmediately: false);
 					}
 					catch (Exception)
 					{
@@ -523,6 +531,8 @@ namespace BloomHarvester
 				_logger.TrackEvent("ProcessOneBook Start"); // After we check ShouldProcessBook
 
 				// Parse DB initial updates
+				// We want to write that it is InProgress as soon as possible, but we also want a copy of the original state
+				var originalBookModel  = (BookModel)book.Model.Clone();
 				book.Model.HarvestState = Parse.Model.HarvestState.InProgress.ToString();
 				book.Model.HarvesterId = this.Identifier;
 				book.Model.HarvesterMajorVersion = Version.Major;
@@ -536,25 +546,31 @@ namespace BloomHarvester
 				book.Model.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
 
 				// Download the book
-				_logger.TrackEvent("Download Book");
 				string decodedUrl = HttpUtility.UrlDecode(book.Model.BaseUrl);
-				string urlWithoutTitle = RemoveBookTitleFromBaseUrl(decodedUrl);
+				var urlComponents = new S3UrlComponents(decodedUrl);
 
-				// Note: If there are multiple instances of the Harvester processing the same environment,
-				//       and they both process the same book, they will attempt to download to the same path, which will probably be bad.
-				//       But for now, the benefit of having each run download into a predictable location (allows caching when enabled)
-				//       seems to outweigh the cost (since we don't normally run multiple instances w/the same env on same machine)
-				string downloadRootDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
-				_logger.LogVerbose("Download Dir: {0}", downloadRootDir);
-				Bloom.Program.RunningHarvesterMode = true;  // HandleDownloadWithoutProgress has a nested subcall to BloomS3Client.cs::AvoidThisFile() which looks at HarvesterMode
+				// Note: Make sure you use the title as it appears on the filesystem.
+				// It may differ from the title in the Parse DB if the title contains punctuation which are not valid in filepaths.
+				string downloadBookDir = Path.Combine(this.GetBookCollectionPath(), urlComponents.BookTitle);
+				bool canUseExisting = TryUseExistingBookDownload(originalBookModel, downloadBookDir);
 
-				string downloadBookDir;
-				if (_options.SkipDownload && Directory.Exists(Path.Combine(downloadRootDir, book.Model.Title)))
+				if (canUseExisting)
 				{
-					downloadBookDir = Path.Combine(downloadRootDir, book.Model.Title);
+					_logger.TrackEvent("Using Cached Book");
 				}
 				else
 				{
+					_logger.TrackEvent("Download Book");
+
+					// Check on how we're doing on disk space
+					_diskSpaceManager?.CleanupIfNeeded();
+
+					// FYI, there's no need to delete this book folder first.
+					// _transfer.HandleDownloadWithoutProgress() removes outdated content for us.
+
+					string urlWithoutTitle = RemoveBookTitleFromBaseUrl(decodedUrl);
+					string downloadRootDir = GetBookCollectionPath();
+					Bloom.Program.RunningHarvesterMode = true;  // HandleDownloadWithoutProgress has a nested subcall to BloomS3Client.cs::AvoidThisFile() which looks at HarvesterMode
 					downloadBookDir = _transfer.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
 				}
 
@@ -597,15 +613,6 @@ namespace BloomHarvester
 				// Write the updates
 				_currentBookId = null;
 				book.Model.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
-
-				if (!_options.SkipDownload)
-				{
-					// Cleanup the download directory if everything was successful.
-					// (If it failed, I guess it's fine to skip deleting it because having the download around makes debugging easier)
-					// (If SkipDownload is true, we skip deleting this so that the next time we run it, it can reuse the download directory.
-					SIL.IO.RobustIO.DeleteDirectoryAndContents(downloadBookDir);
-				}
-
 				_logger.TrackEvent("ProcessOneBook End - " + (isSuccessful ? "Success" : "Error"));
 			}
 			catch (Exception e)
@@ -629,7 +636,7 @@ namespace BloomHarvester
 					// (In fact, that's what a ParseException with NotFound is telling us.)
 					return isSuccessful;
 				}
-				_issueReporter.ReportException(e, errorMessage, book.Model, _parseDBEnvironment, exitImmediately: false);
+				_issueReporter.ReportException(e, errorMessage, book.Model, exitImmediately: false);
 
 				// Attempt to write to Parse that processing failed
 				if (!String.IsNullOrEmpty(book.Model?.ObjectId) && !skipBugReport)
@@ -654,6 +661,50 @@ namespace BloomHarvester
 			}
 
 			return isSuccessful;
+		}
+
+		/// <summary>
+		/// Determines whether or not we can/should use an existing book download
+		/// </summary>
+		/// <param name="originalBookModel">The bookModel at the very beginning of processing, without any updates we've made.</param>
+		/// <param name="pathToExistingBook">The path of the book to check</param>
+		/// <returns>True if it's ok to use</returns>
+		private bool TryUseExistingBookDownload(BookModel originalBookModel, string pathToCheck)
+		{
+			if (_options.ForceDownload)
+				return false;
+
+			if (_options.SkipDownload)
+				return Directory.Exists(pathToCheck);
+
+			ParseDate lastHarvestedDate = originalBookModel.HarvestStartedAt;
+			if (lastHarvestedDate == null)
+				// Not harvested previously. Need to download it for the first time.
+				return false;
+
+			ParseDate lastUploadedDate = originalBookModel.LastUploaded;
+
+			// For a long time, lastUploadedDate was not set. This will show up as (undefined) in the ParseDB,
+			// which shows up as null for the ParseDate here in C# land.
+			// lastUploadedDate didn't start getting set in Production until partway through 4-6-2020 (UTC time)
+			// (although it started appearing in March on Dev).
+			// We treat null lastUploadDate as if it were uploaded at the end of 4-6-2020,
+			// since we cannot rule out the possibility that it was uploaded as late as this time.
+			if (lastUploadedDate == null)
+			{
+				lastUploadedDate = new ParseDate(new DateTime(2020, 04, 06, 23, 59, 59, DateTimeKind.Utc));
+			}
+
+			if (lastHarvestedDate.UtcTime < lastUploadedDate.UtcTime)
+			{
+				// It's been uploaded (or potentially uploaded) since the last time we harvested.
+				// Must not use the existing one... we need to re-download it
+				return false;
+			}
+
+			// It's feasible to re-use the existing directory,
+			// but only if it actually exists
+			return Directory.Exists(pathToCheck);
 		}
 
 		internal virtual IBookAnalyzer GetAnalyzer(string downloadBookDir)
@@ -906,7 +957,7 @@ namespace BloomHarvester
 				// Since we abort processing a book if any fonts are missing,
 				// we don't want to proceed blindly if we're not sure if the book is missing any fonts.
 				harvestLogEntries.Add(new LogEntry(LogLevel.Error, LogType.GetFontsError, "Error calling getFonts"));
-				_issueReporter.ReportError("Error calling getMissingFonts", "", "", _options.Environment, book.Model);
+				_issueReporter.ReportError("Error calling getMissingFonts", "", "", book.Model);
 				return harvestLogEntries;
 			}
 
@@ -922,7 +973,7 @@ namespace BloomHarvester
 
 					if (!_missingFonts.Contains(missingFont))
 					{
-						_issueReporter.ReportMissingFont(missingFont, this.Identifier, _parseDBEnvironment, book.Model);
+						_issueReporter.ReportMissingFont(missingFont, this.Identifier, book.Model);
 						_missingFonts.Add(missingFont);
 					}
 					else
@@ -1026,7 +1077,7 @@ namespace BloomHarvester
 						_logger.LogError(errorDetails);
 						errorDetails += $"\n===StandardOut===\n{bloomStdOut ?? ""}\n";
 						errorDetails += $"\n===StandardError===\n{bloomStdErr ?? ""}";
-						_issueReporter.ReportError("Harvester BloomCLI Error", errorDescription, errorDetails, _parseDBEnvironment, book.Model);
+						_issueReporter.ReportError("Harvester BloomCLI Error", errorDescription, errorDetails, book.Model);
 					}
 					else
 					{
@@ -1061,6 +1112,28 @@ namespace BloomHarvester
 			}
 
 			return success;
+		}
+
+		/// <summary>
+		/// The drive containing the downloaded books
+		/// </summary>
+		/// <returns></returns>
+		private static IDriveInfo GetHarvesterDrive()
+		{
+			var fileInfo = new FileInfo(GetRootPath());
+			var driveInfo = new DriveInfo(fileInfo.Directory.Root.FullName);
+			return new HarvesterDriveInfo(driveInfo);
+		}
+
+		private static string GetRootPath() => Path.GetTempPath();
+
+		internal string GetBookCollectionPath()
+		{
+			// Note: If there are multiple instances of the Harvester processing the same environment,
+			//       and they both process the same book, they will attempt to downlaod to the same path, which will probably be bad.
+			//       But for now, the benefit of having each run download into a predictable location (allows caching when enabled)
+			//       seems to outweigh the cost (since we don't normally run multiple instances w/the same env on same machine)
+			return Path.Combine(GetRootPath(), Path.Combine("BloomHarvester", this.Identifier));
 		}
 
 		internal string GetBloomDigitalArtifactsPath()

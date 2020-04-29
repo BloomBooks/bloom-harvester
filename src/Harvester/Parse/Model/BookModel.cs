@@ -31,12 +31,12 @@ namespace BloomHarvester.Parse.Model
 		/// <summary>
 		/// A constructor that allows setting readonly fields
 		/// </summary>
-		/// <param name="baseUrl"></param>
-		internal BookModel(string baseUrl = null, string title = null, bool isInCirculation = true)
+		internal BookModel(string baseUrl, string title, bool isInCirculation = true, ParseDate lastUploaded = null)
 		{
 			this.BaseUrl = baseUrl;
 			this.Title = title;
 			this.IsInCirculation = isInCirculation;
+			this.LastUploaded = lastUploaded;
 
 			// Enhance: add more readonly fields as needed
 		}
@@ -87,7 +87,7 @@ namespace BloomHarvester.Parse.Model
 		/// The timestamp of the last time Harvester started processing this book
 		/// </summary>
 		[JsonProperty("harvestStartedAt")]
-		public Parse.Model.ParseDate HarvestStartedAt { get; set; }
+		public ParseDate HarvestStartedAt { get; set; }
 
 		[JsonProperty("harvestLog")]
 		public List<string> HarvestLogEntries { get; set; }
@@ -98,8 +98,8 @@ namespace BloomHarvester.Parse.Model
 		[JsonProperty("baseUrl")]
 		public readonly string BaseUrl;
 
-		[JsonProperty("title")]
-		public readonly string Title;
+		[JsonProperty("features")]
+		public string[] Features { get; set; }
 
 		[JsonProperty("inCirculation")]
 		public readonly bool? IsInCirculation;
@@ -107,14 +107,8 @@ namespace BloomHarvester.Parse.Model
 		[JsonProperty("langPointers")]
 		public readonly Language[] Languages;
 
-		[JsonProperty("uploader")]
-		public readonly User Uploader;
-
-		[JsonProperty("features")]
-		public string[] Features { get; set; }
-
-		[JsonProperty("tags")]
-		public string[] Tags { get; set; }
+		[JsonProperty("lastUploaded")]
+		public readonly ParseDate LastUploaded;
 
 		[JsonProperty("phashOfFirstContentImage")]	// Should be phash, not pHash
 		public string PHashOfFirstContentImage { get; set; }
@@ -145,8 +139,46 @@ namespace BloomHarvester.Parse.Model
 		/// </remarks>
 		[JsonProperty(kShowField)]
 		public dynamic Show { get; set; }
+		
+		[JsonProperty("tags")]
+		public string[] Tags { get; set; }
+
+		[JsonProperty("title")]
+		public readonly string Title;
+
+		[JsonProperty("uploader")]
+		public readonly User Uploader;
 		#endregion
 
+		public static List<string> GetParseKeys()
+		{
+			var type = typeof(BookModel);
+
+			var serializedMembers = 
+				// First collect all the fields and properties
+				type.GetFields().Cast<MemberInfo>()
+				.Concat(type.GetProperties().Cast<MemberInfo>())
+				// Only include the ones which are serialized to JSON
+				.Where(member => member.CustomAttributes.Any(attr => attr.AttributeType.FullName == "Newtonsoft.Json.JsonPropertyAttribute"));
+
+			var parseKeyNames = serializedMembers.Select(GetMemberJsonName).ToList();
+
+			return parseKeyNames;
+		}
+
+		private static string GetMemberJsonName(MemberInfo memberInfo)
+		{
+			// Precondition: memberInfo must have an attribute of type JsonPropertyAttribute
+			return
+				// First find the JsonPropertyAttribute
+				memberInfo.CustomAttributes.Where(attr => attr.AttributeType.FullName == "Newtonsoft.Json.JsonPropertyAttribute")
+				.Select(attr =>
+					// Prefer to use the name assigned in JsonPropertyAttribute first, if available
+					(attr.ConstructorArguments.FirstOrDefault().Value as string)
+					// If not, fallback to the member's C# name
+					?? memberInfo.Name)
+				.First();
+		}
 
 		public override WriteableParseObject Clone()
 		{

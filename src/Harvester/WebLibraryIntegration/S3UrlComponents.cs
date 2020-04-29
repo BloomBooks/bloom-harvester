@@ -55,6 +55,17 @@ namespace BloomHarvester.WebLibraryIntegration
 
 			if (fields.Length > 4)
 				obj.BookTitle = fields[4];
+
+			if (String.IsNullOrEmpty(obj.BookTitle))
+			{
+				// It's going to cause problems for the Harvester code if the BookTItle is null.
+				// We use the BookTitle when creating paths to read/write to the file system.
+				// if it's null/empty, the path structure will look different...
+				// Theoretically, seems like there's non-zero risk that we could overwrite the parent folder?!
+				//
+				// Let's just abort now instead.
+				throw new ArgumentException("Book has null/empty title");
+			}
 		}
 	}
 }
