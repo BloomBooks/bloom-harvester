@@ -576,9 +576,8 @@ namespace BloomHarvester
 						book.Analyzer = analyzer;
 
 						isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book, harvestLogEntries);
-						// TODO: if not successful, I guess you can update artifact suitability to say all false/empty. It makes things less confusing to Bloom Library admins than saying true.
-						if (isSuccessful)
-							UpdateSuitabilityofArtifacts(book, analyzer);
+						// If not successful, update artifact suitability to say all false. (BL-8413)
+						UpdateSuitabilityofArtifacts(book, analyzer, isSuccessful);
 
 						book.SetTags();
 					}
@@ -647,18 +646,18 @@ namespace BloomHarvester
 			return BookAnalyzer.FromFolder(downloadBookDir);
 		}
 
-		private void UpdateSuitabilityofArtifacts(Book book, IBookAnalyzer analyzer)
+		private void UpdateSuitabilityofArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful)
 		{
 			if (!_options.SkipUploadEPub)
 			{
-				book.SetHarvesterEvaluation("epub", analyzer.IsEpubSuitable());
+				book.SetHarvesterEvaluation("epub", isSuccessful && analyzer.IsEpubSuitable());
 			}
 
 			// harvester never makes pdfs at the moment.
 
 			if (!_options.SkipUploadBloomDigitalArtifacts)
 			{
-				var isBloomReaderGood = analyzer.IsBloomReaderSuitable();
+				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable();
 				book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
 				book.SetHarvesterEvaluation("readOnline", isBloomReaderGood);
 			}
