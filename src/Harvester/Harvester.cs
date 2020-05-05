@@ -1063,7 +1063,7 @@ namespace BloomHarvester
 		private void UploadBloomDigitalArtifacts(string zippedBloomDPath, string unzippedFolderPath, string s3FolderLocation)
 		{
 			_logger.TrackEvent("Upload .bloomd");
-			_s3UploadClient.UploadFile(zippedBloomDPath, s3FolderLocation);
+			_s3UploadClient.UploadFile(zippedBloomDPath, s3FolderLocation, "no-cache");
 
 			_logger.TrackEvent("Upload bloomdigital directory");
 			// Clear out the directory first to make sure stale artifacts get removed.
@@ -1083,7 +1083,7 @@ namespace BloomHarvester
 			_logger.TrackEvent("Upload .epub");
 			string folderToUploadTo = $"{s3FolderLocation}/epub";
 			_s3UploadClient.DeleteDirectory(folderToUploadTo);
-			_s3UploadClient.UploadFile(epubPath, folderToUploadTo);
+			_s3UploadClient.UploadFile(epubPath, folderToUploadTo, "no-cache");
 		}
 
 		/// <summary>
@@ -1111,7 +1111,7 @@ namespace BloomHarvester
 					if (SIL.IO.RobustFile.Exists(thumbnailPath))
 					{
 						_logger.TrackEvent("Upload thumbnail");
-						_s3UploadClient.UploadFile(thumbnailPath, folderToUploadTo);
+						_s3UploadClient.UploadFile(thumbnailPath, folderToUploadTo, "max-age=31536000");	// 60 * 60 * 24 * 365
 					}
 				}
 			}

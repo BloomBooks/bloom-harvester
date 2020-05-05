@@ -16,7 +16,7 @@ namespace BloomHarvester.WebLibraryIntegration
 {
 	interface IS3Client
 	{
-		void UploadFile(string filePath, string uploadFolderKey);
+		void UploadFile(string filePath, string uploadFolderKey, string cacheControl);
 		void UploadDirectory(string directoryToUpload, string uploadFolderKey);
 		void DeleteDirectory(string folderKey);
 		string GetFileWithExtension(string bookFolder, string extension, string idealBaseName = "");
@@ -91,9 +91,10 @@ namespace BloomHarvester.WebLibraryIntegration
 		/// <summary>
 		/// Uploads a single file to AWS S3
 		/// </summary>
-		/// <param name="filePath"></param>
+		/// <param name="filePath">full pathname of file to upload</param>
 		/// <param name="uploadFolderKey">The key prefix of the S3 object to create (i.e., which subfolder to upload it to)</param>
-		public void UploadFile(string filePath, string uploadFolderKey)
+		/// <param name="cacheControl">optional value for HTTP Cache-Control header</param>
+		public void UploadFile(string filePath, string uploadFolderKey, string cacheControl)
 		{
 			using (var fileTransferUtility = new TransferUtility(GetAmazonS3(_bucketName)))
 			{
@@ -115,6 +116,8 @@ namespace BloomHarvester.WebLibraryIntegration
 				// open, it seems desirable to download them rather than try to open them, if such a thing should ever happen.
 				// So I'm leaving the code in for now.
 				request.Headers.ContentDisposition = "attachment";
+				if (!String.IsNullOrEmpty(cacheControl))
+					request.Headers.CacheControl = cacheControl;
 				// It is possible to also set the filename (after attachment, put ; filename='" + Path.GetFileName(file) + "').
 				// Currently the default seems to be to use the file's name from the key, which is fine, so not messing with this.
 				// At one point we did try it, and found that AWSSDK can't cope with setting this for files with non-ascii names.
@@ -157,6 +160,9 @@ namespace BloomHarvester.WebLibraryIntegration
 					SearchOption = System.IO.SearchOption.AllDirectories,
 					CannedACL = S3CannedACL.PublicRead
 				};
+				// Set cache control for uploaded items.  See https://issues.bloomlibrary.org/youtrack/issue/BL-8198
+				// and https://forums.aws.amazon.com/thread.jspa?threadID=144559.
+				request.Metadata.Add("Cache-Control", "no-cache");
 
 				// Enhance: Could call the BloomDesktop code directly in future if desired.
 				transferUtility.UploadDirectory(request);
