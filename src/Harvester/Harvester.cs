@@ -541,7 +541,7 @@ namespace BloomHarvester
 				string urlWithoutTitle = RemoveBookTitleFromBaseUrl(decodedUrl);
 
 				// Note: If there are multiple instances of the Harvester processing the same environment,
-				//       and they both process the same book, they will attempt to downlaod to the same path, which will probably be bad.
+				//       and they both process the same book, they will attempt to download to the same path, which will probably be bad.
 				//       But for now, the benefit of having each run download into a predictable location (allows caching when enabled)
 				//       seems to outweigh the cost (since we don't normally run multiple instances w/the same env on same machine)
 				string downloadRootDir = Path.Combine(Path.GetTempPath(), Path.Combine("BloomHarvester", this.Identifier));
@@ -614,10 +614,25 @@ namespace BloomHarvester
 				string bookId = book.Model?.ObjectId ?? "null";
 				string bookUrl = book.Model?.BaseUrl ?? "null";
 				string errorMessage = $"Unhandled exception \"{e.Message}\" thrown.";
+				// On rare occasions, someone may delete a book just as we're processing it.  If that happens, don't bother
+				// reporting a bug to YouTrack. (BH-5480 & BL-8388)
+				var skipBugReport = bookId != "null" && bookUrl != "null" &&
+				                    ((e is ParseException && errorMessage.Contains("Response.Code: NotFound")) ||
+				                     (e is DirectoryNotFoundException && errorMessage.Contains("tried to download")));
+				if (skipBugReport)
+				{
+					_logger.TrackEvent("Possible book deletion");
+					var msgFormat =
+						$"ProcessOneBook - Exception caught, book {bookId} ({bookUrl}) may have been deleted.{Environment.NewLine}{{0}}";
+					_logger.LogWarn(msgFormat, e.Message);
+					// If the book has been deleted, the parse table row will also have been deleted.
+					// (In fact, that's what a ParseException with NotFound is telling us.)
+					return isSuccessful;
+				}
 				_issueReporter.ReportException(e, errorMessage, book.Model, _parseDBEnvironment, exitImmediately: false);
 
 				// Attempt to write to Parse that processing failed
-				if (!String.IsNullOrEmpty(book.Model?.ObjectId))
+				if (!String.IsNullOrEmpty(book.Model?.ObjectId) && !skipBugReport)
 				{
 					try
 					{

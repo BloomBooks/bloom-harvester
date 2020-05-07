@@ -13,6 +13,7 @@ using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace BloomHarvesterTests
 {
@@ -348,8 +349,10 @@ namespace BloomHarvesterTests
 		#region ProcessOneBook() tests
 		private HarvesterOptions GetHarvesterOptionsForProcessOneBookTests() => new HarvesterOptions() { Mode = HarvestMode.All, SuppressLogs = true, Environment = EnvironmentSetting.Local, ParseDBEnvironment = EnvironmentSetting.Local };
 
-		private Harvester GetSubstituteHarvester(HarvesterOptions options, IBloomCliInvoker bloomCli = null, IParseClient parseClient = null, IBookTransfer transferClient = null, IS3Client s3DownloadClient = null, IS3Client s3UploadClient = null, IBookAnalyzer bookAnalyzer = null, IFontChecker fontChecker = null, IFileIO fileIO = null)
+		private Harvester GetSubstituteHarvester(HarvesterOptions options, IBloomCliInvoker bloomCli = null, IParseClient parseClient = null, IBookTransfer transferClient = null, IS3Client s3DownloadClient = null, IS3Client s3UploadClient = null, IBookAnalyzer bookAnalyzer = null, IFontChecker fontChecker = null, IFileIO fileIO = null, IMonitorLogger logger = null)
 		{
+			if (logger == null)
+				logger = _logger;
 			options.SuppressLogs = true;	// Probably not meaningful for tests
 
 			string identifier = "UnitTestHarvester";
@@ -389,7 +392,7 @@ namespace BloomHarvesterTests
 			else
 				_fakeFontChecker = fontChecker;
 
-			var harvester = Substitute.ForPartsOf<Harvester>(options, EnvironmentSetting.Test, identifier, _fakeParseClient, _fakeBloomS3Client, _fakeS3UploadClient, _fakeTransfer, _fakeIssueReporter, _logger, _fakeBloomCli, _fakeFontChecker, _fakeFileIO);
+			var harvester = Substitute.ForPartsOf<Harvester>(options, EnvironmentSetting.Test, identifier, _fakeParseClient, _fakeBloomS3Client, _fakeS3UploadClient, _fakeTransfer, _fakeIssueReporter, logger, _fakeBloomCli, _fakeFontChecker, _fakeFileIO);
 
 			harvester.Configure().GetAnalyzer(default).ReturnsForAnyArgs(bookAnalyzer ?? Substitute.For<IBookAnalyzer>());
 
@@ -632,6 +635,85 @@ namespace BloomHarvesterTests
 				_fakeS3UploadClient.DidNotReceiveWithAnyArgs().DeleteDirectory(default);
 			}
 		}
+
+		[Test]
+		public void ProcessOneBook_DeletedBook_ParseUpdateFailureHandled()
+		{
+			// Mock Setup
+			var options = new HarvesterOptions()
+			{
+				Mode = HarvestMode.Default,
+				Environment = EnvironmentSetting.Local,
+				SuppressLogs = true
+			};
+			var parseClient = Substitute.For<IParseClient>();
+			parseClient.Configure().UpdateObject(default, default, default).ReturnsForAnyArgs(args =>
+				throw new ParseException("Update failed.\r\nRequest.Json: {\"harvestState\":\"Done\",\"updateSource\":\"bloomHarvester\"}\r\nResponse.Code: NotFound\r\nResponse.Uri: https://bloom-parse-server-develop.azurewebsites.net/parse/classes/books/7Nfwo3hquq\r\nResponse.Description: Not Found\r\nResponse.Content: {\"code\":101,\"error\":\"Object not found.\"}"));
+			var logger = new StringListLogger();
+			using (var harvester = GetSubstituteHarvester(options, parseClient: parseClient,  logger: logger))
+			{
+				string baseUrl = "https://s3.amazonaws.com/FakeBucket/fakeUploader%40gmail.com%2fFakeGuid%2fFakeTitle%2f";
+				var bookModel = new BookModel(baseUrl: baseUrl) {ObjectId = "123456789"};
+				var book = new Book(bookModel, logger);
+
+				// System under test
+				harvester.ProcessOneBook(book);
+
+				// Validate that the error was not logged to the model.
+				var logEntries = book.Model.GetValidLogEntries();
+				Assert.That(logEntries.Count, Is.EqualTo(0), "The error should not be logged to the model.");
+
+				// Validate that the code did not in fact attempt to report an error to the issue tracker.
+				_fakeIssueReporter.DidNotReceiveWithAnyArgs().ReportException(default, default, default, default);
+
+				// Validate that we did at least log the error.
+				Assert.That(logger.LogList.Count, Is.GreaterThan(2));
+				var hadDeletionEvent = logger.LogList.Any(x => x.Contains("Event: Possible book deletion"));
+				Assert.That(hadDeletionEvent, Is.True, "Book deletion event was not found");
+				var hadDeletionWarning = logger.LogList.Any(x => x.Contains("Log Warn: ProcessOneBook - Exception caught, book") && x.Contains("may have been deleted."));
+				Assert.That(hadDeletionWarning, Is.True, "Book deletion warning was not found");
+			}
+		}
+
+		[Test]
+		public void ProcessOneBook_DeletedBook_S3DownloadFailureHandled()
+		{
+			// Mock Setup
+			var options = new HarvesterOptions()
+			{
+				Mode = HarvestMode.Default,
+				Environment = EnvironmentSetting.Local,
+				SuppressLogs = true
+			};
+			var transferClient = Substitute.For<IBookTransfer>();
+			transferClient.Configure().HandleDownloadWithoutProgress(default, default).ReturnsForAnyArgs(args =>
+				throw new DirectoryNotFoundException("The book we tried to download is no longer in the BloomLibrary"));
+			var logger = new StringListLogger();
+			using (var harvester = GetSubstituteHarvester(options, transferClient: transferClient,  logger: logger))
+			{
+				string baseUrl = "https://s3.amazonaws.com/FakeBucket/fakeUploader%40gmail.com%2fFakeGuid%2fFakeTitle%2f";
+				var bookModel = new BookModel(baseUrl: baseUrl) {ObjectId = "123456789"};
+				var book = new Book(bookModel, logger);
+
+				// System under test
+				harvester.ProcessOneBook(book);
+
+				// Validate that the error was not logged to the model.
+				var logEntries = book.Model.GetValidLogEntries();
+				Assert.That(logEntries.Count, Is.EqualTo(0), "The error should not be logged to the model.");
+
+				// Validate that the code did not in fact attempt to report an error to the issue tracker.
+				_fakeIssueReporter.DidNotReceiveWithAnyArgs().ReportException(default, default, default, default);
+
+				// Validate that we did at least log the error.
+				Assert.That(logger.LogList.Count, Is.GreaterThan(2));
+				var hadDeletionEvent = logger.LogList.Any(x => x.Contains("Event: Possible book deletion"));
+				Assert.That(hadDeletionEvent, Is.True, "Book deletion event was not found");
+				var hadDeletionWarning = logger.LogList.Any(x => x.Contains("Log Warn: ProcessOneBook - Exception caught, book") && x.Contains("may have been deleted."));
+				Assert.That(hadDeletionWarning, Is.True, "Book deletion warning was not found");
+			}
+		}
+
 		#endregion
 
 		[Test]
