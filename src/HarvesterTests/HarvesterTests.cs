@@ -326,8 +326,10 @@ namespace BloomHarvesterTests
 		{
 			using (Harvester harvester = new Harvester(new HarvesterOptions() { Mode = HarvestMode.NewOrUpdatedOnly, SuppressLogs = true, Environment = EnvironmentSetting.Local, ParseDBEnvironment = EnvironmentSetting.Local }))
 			{
-				string result = harvester.GetQueryWhereOptimizations();
-				Assert.AreEqual("\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\"]}", result);
+				var result = harvester.GetQueryWhereOptimizations();
+				Assert.AreEqual(2, result.Count);
+				Assert.AreEqual("\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\"]}", result[0]);
+				Assert.AreEqual("\"$or\":[{\"inCirculation\":true},{\"inCirculation\":{\"$exists\":false}}]", result[1]);
 			}
 		}
 
@@ -336,7 +338,7 @@ namespace BloomHarvesterTests
 		[TestCase("{}")]
 		public void InsertQueryWhereOptimizations_DefaultMode_EmptyUserInput_InsertsJustOptimizations(string userInputWhere)
 		{
-			string combined = Harvester.InsertQueryWhereOptimizations(userInputWhere, "\"harvesterMajorVersion\":{\"$lt\":2}");
+			string combined = Harvester.InsertQueryWhereOptimizations(userInputWhere, new List<string> {"\"harvesterMajorVersion\":{\"$lt\":2}"} );
 			Assert.AreEqual("{\"harvesterMajorVersion\":{\"$lt\":2}}", combined);
 		}
 
@@ -344,8 +346,8 @@ namespace BloomHarvesterTests
 		public void InsertQueryWhereOptimizations_DefaultMode_UserInputWhere_CombinesBoth()
 		{
 			string userInputWhere = "{ \"title\":{\"$regex\":\"^^A\"},\"tags\":\"bookshelf:Ministerio de Educación de Guatemala\" }";
-			string combined = Harvester.InsertQueryWhereOptimizations(userInputWhere, "\"harvesterMajorVersion\":{\"$lt\":2}");
-			Assert.AreEqual("{ \"title\": { \"$regex\": \"^^A\" }, \"tags\": \"bookshelf:Ministerio de Educación de Guatemala\", \"harvesterMajorVersion\": { \"$lt\": 2 }}", combined);
+			string combined = Harvester.InsertQueryWhereOptimizations(userInputWhere, new List<string> {"\"harvesterMajorVersion\":{\"$lt\":2}"} );
+			Assert.AreEqual("{\"$and\":[{\"title\":{\"$regex\":\"^^A\"},\"tags\":\"bookshelf:Ministerio de Educación de Guatemala\"},{\"harvesterMajorVersion\":{\"$lt\":2}}]}", combined);
 		}
 		#endregion
 

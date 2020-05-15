@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Web;
 using Bloom.WebLibraryIntegration;
@@ -13,7 +14,6 @@ using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomTemp;
-using Newtonsoft.Json.Linq;
 
 
 namespace BloomHarvester
@@ -292,7 +292,7 @@ namespace BloomHarvester
 		{
 			_logger.TrackEvent($"Harvest{_options.Mode} Start");
 
-			string additionalWhereFilters = GetQueryWhereOptimizations();
+			var additionalWhereFilters = GetQueryWhereOptimizations();
 			string combinedWhereJson = Harvester.InsertQueryWhereOptimizations(queryWhereJson, additionalWhereFilters);
 			Console.Out.WriteLine("combinedWhereJson: " + combinedWhereJson);
 
@@ -468,56 +468,86 @@ namespace BloomHarvester
 			_logger.TrackEvent($"Harvest{_options.Mode} End");
 		}
 
-		internal string GetQueryWhereOptimizations()
+		internal List<string> GetQueryWhereOptimizations()
 		{
-			// These filters should keep every book we need to process, but it's ok to include some books we don't need to process. We will still call ShouldProcessBook later to do more checking.
-			string whereOptimizationConditions = "";
-
-			string majorVersionFilter = "\"$or\": [{\"harvesterMajorVersion\" : { \"$lte\": " + this.Version.Major + "}}, {\"harvesterMajorVersion\": {\"$exists\": false}}]";
+			// These filters should keep every book we need to process, but it's ok to include some books we don't need to process.
+			// We will still call ShouldProcessBook later to do more checking.
+			List<string> whereOptimizationConditions = new List<string>();
+			// If (!ForceAll) then add (inCirculation == true || inCirculation not set)
+			string inCirculation = $"\"$or\":[{{\"inCirculation\":true}},{{\"inCirculation\":{{\"$exists\":false}}}}]";
+			// version X.Y => (HarvesterMajorVersion < X) || (HarvesterMajorVersion == X && HarvesterMinorVersion < Y) || (HarvesterMajorVersion doesn't exist)
+			// (the HarvesterMinorVersion <= Y for including the current version)
+			string previousVersion = "\"$or\":["+
+			                       $"{{\"harvesterMajorVersion\":{{\"$lt\":{this.Version.Major}}}}},"+
+			                       $"{{\"harvesterMajorVersion\":{this.Version.Major},\"harvesterMinorVersion\":{{\"$lt\":{this.Version.Minor}}}}},"+
+			                       "{\"harvesterMajorVersion\":{\"$exists\":false}}"+
+			                       "]";
+			string previousOrCurrentVersion = "\"$or\":["+
+			                                  $"{{\"harvesterMajorVersion\":{{\"$lt\":{this.Version.Major}}}}},"+
+			                                  $"{{\"harvesterMajorVersion\":{this.Version.Major},\"harvesterMinorVersion\":{{\"$lte\":{this.Version.Minor}}}}},"+
+			                                  "{\"harvesterMajorVersion\":{\"$exists\":false}}"+
+			                                  "]";
 			switch (_options.Mode)
 			{
+				case HarvestMode.ForceAll:
+					// no filtering added: we want EVERYTHING!
+					break;
 				case HarvestMode.All:
+					// all books in circulation
+					whereOptimizationConditions.Add(inCirculation);
 					break;
 				case HarvestMode.NewOrUpdatedOnly:
-					whereOptimizationConditions = "\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\"]}";
+					// all books in circulation AND with the state in [New, Updated, Unknown]
+					whereOptimizationConditions.Add("\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\"]}");
+					whereOptimizationConditions.Add(inCirculation);
 					break;
 				case HarvestMode.RetryFailuresOnly:
-					whereOptimizationConditions = "\"harvestState\": \"Failed\", " + majorVersionFilter;
+					// all books in circulation AND harvested by current or previous version of harvester AND state is Failed
+					whereOptimizationConditions.Add("\"harvestState\": \"Failed\"");
+					whereOptimizationConditions.Add(previousOrCurrentVersion);
+					whereOptimizationConditions.Add(inCirculation);
 					break;
 				case HarvestMode.Default:
 				default:
-					whereOptimizationConditions = majorVersionFilter;
+					// all books in circulation AND EITHER harvested by previous version of harvester OR state in [InProgress, Aborted]
+					whereOptimizationConditions.Add($"\"$or\":[{{{previousVersion}}},{{\"harvestState\":{{\"$in\":[\"InProgress\",\"Aborted\"]}}}}]");
+					whereOptimizationConditions.Add(inCirculation);
 					break;
 			}
-
 			return whereOptimizationConditions;
 		}
 
-		internal static string InsertQueryWhereOptimizations(string userInputQueryWhere, string whereOptimization)
+		internal static string InsertQueryWhereOptimizations(string userInputQueryWhere, List<string> whereConditions)
 		{
-			if (String.IsNullOrWhiteSpace(userInputQueryWhere) || userInputQueryWhere == "{}" || userInputQueryWhere == "{ }")
+			if (userInputQueryWhere == null)
+				userInputQueryWhere = "";	// simplify processing to not need multiple null checks
+			// if no additional conditions apply, just return the user input (which may be empty)
+			if (whereConditions.Count == 0)
+				return userInputQueryWhere;
+			var userInput = userInputQueryWhere.Trim();
+			// To simplify processing below, strip the surrounding braces from the user's input condition.
+			if (userInput.StartsWith("{") && userInput.EndsWith("}"))
 			{
-				return "{" + whereOptimization + "}";
+				userInput = userInput.Substring(1, userInput.Length - 2);
+				userInput = userInput.Trim();
 			}
-
-			var userInputJson = JObject.Parse(userInputQueryWhere);
-			var additionalJson  = JObject.Parse("{" + whereOptimization + "}");
-			userInputJson.Merge(additionalJson, new JsonMergeSettings
+			// If the user input is not empty, add it as the first condition.
+			if (!String.IsNullOrEmpty(userInput))
+				whereConditions.Insert(0, userInput);
+			var bldr = new StringBuilder();
+			bldr.Append("{");
+			if (whereConditions.Count == 1)
 			{
-				MergeArrayHandling = MergeArrayHandling.Union
-			});
-
-			string jsonString = userInputJson.ToString();
-			jsonString = jsonString.Replace("\r", "");
-			jsonString = jsonString.Replace("\n", "");
-			string previousString;
-			do
+				bldr.Append(whereConditions[0]);
+			}
+			else
 			{
-				previousString = jsonString;
-				jsonString = jsonString.Replace("  ", " ");
-			} while (previousString != jsonString);
-
-			return jsonString;
+				bldr.Append("\"$and\":[{");
+				bldr.Append(String.Join("},{", whereConditions));
+				bldr.Append("}]");
+			}
+			bldr.Append("}");
+			return bldr.ToString();
 		}
 				
 		internal bool ProcessOneBook(Book book)
