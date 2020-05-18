@@ -15,6 +15,8 @@ using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace BloomHarvesterTests
 {
@@ -73,6 +75,13 @@ namespace BloomHarvesterTests
 			};
 
 			return book;
+		}
+
+		private void VerifyNoExceptions()
+		{
+			_fakeIssueReporter.DidNotReceiveWithAnyArgs().ReportException(default, default, default, default);
+			_fakeIssueReporter.DidNotReceiveWithAnyArgs().ReportError(default, default, default, default);
+			_fakeIssueReporter.DidNotReceiveWithAnyArgs().ReportMissingFont(default, default, default);
 		}
 
 		[TestCase("Dev", "Dev")]
@@ -404,16 +413,21 @@ namespace BloomHarvesterTests
 			if (fileIO == null)
 			{
 				// This needs to run after the harvester is initialized (because it calls an instance method),
-				// so we need this 2nd phase of initializatino
-				//
-				// Pretend there's an index.htm file, so that the code which verifies it was created won't fail us
-				// It may be pretty commonplace that most unit tests would prefer for this check not to happen, so we'll
-				// take care of it here for all unit tests by default
-				var indexPath = Path.Combine(Path.GetTempPath(), harvester.GetBloomDigitalArtifactsPath(), "index.htm");
-				_fakeFileIO.Configure().Exists(indexPath).Returns(true);
+				// so we need this 2nd phase of initialization
+				ConfigureFakeFileIODefaults(_fakeFileIO, harvester);
 			}
 
 			return harvester;
+		}
+
+		// This needs to run after the harvester is initialized (because it calls an instance method),
+		private static void ConfigureFakeFileIODefaults(IFileIO fakeFileIO, Harvester harvester)
+		{
+			// Pretend there's an index.htm file, so that the code which verifies it was created won't fail us
+			// It may be pretty commonplace that most unit tests would prefer for this check not to happen, so we'll
+			// take care of it here for all unit tests by default
+			var indexPath = Path.Combine(Path.GetTempPath(), harvester.GetBloomDigitalArtifactsPath(), "index.htm");
+			fakeFileIO.Configure().Exists(indexPath).Returns(true);
 		}
 
 		[Test]
@@ -603,6 +617,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeS3UploadClient.DidNotReceive().DeleteDirectory("fakeUploader@gmail.com/FakeGuid");
 				_fakeS3UploadClient.Received(1).DeleteDirectory("fakeUploader@gmail.com/FakeGuid/bloomdigital");
 				_fakeS3UploadClient.Received(1).DeleteDirectory("fakeUploader@gmail.com/FakeGuid/epub");
@@ -631,6 +646,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeS3UploadClient.DidNotReceiveWithAnyArgs().DeleteDirectory(default);
 			}
 		}
@@ -657,6 +673,9 @@ namespace BloomHarvesterTests
 
 				// System under test
 				harvester.ProcessOneBook(book);
+
+				// Validation
+				VerifyNoExceptions();
 
 				// Validate that the error was not logged to the model.
 				var logEntries = book.Model.GetValidLogEntries();
@@ -697,6 +716,8 @@ namespace BloomHarvesterTests
 				// System under test
 				harvester.ProcessOneBook(book);
 
+				VerifyNoExceptions();
+
 				// Validate that the error was not logged to the model.
 				var logEntries = book.Model.GetValidLogEntries();
 				Assert.That(logEntries.Count, Is.EqualTo(0), "The error should not be logged to the model.");
@@ -713,7 +734,7 @@ namespace BloomHarvesterTests
 			}
 		}
 
-
+		#region TryUseExistingBookDownload tests
 		[TestCase("2020-05-01", "2020-05-02")]	// could skip download, but it's not on disk
 		[TestCase(null, "2020-04-07")]	// could skip download, but it's not on disk
 		[TestCase("2020-05-01", "2020-04-30")]	// updated - would need to process it anyway
@@ -736,6 +757,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeTransfer.ReceivedWithAnyArgs(1).HandleDownloadWithoutProgress(default, default);
 				_logger.Received(1).TrackEvent("Download Book");
 
@@ -766,6 +788,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeTransfer.ReceivedWithAnyArgs(1).HandleDownloadWithoutProgress(default, default);
 				_logger.Received(1).TrackEvent("Download Book");
 
@@ -794,6 +817,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeTransfer.DidNotReceiveWithAnyArgs().HandleDownloadWithoutProgress(default, default);
 				_logger.DidNotReceive().TrackEvent("Download Book");
 
@@ -821,6 +845,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeTransfer.DidNotReceiveWithAnyArgs().HandleDownloadWithoutProgress(default, default);
 				_logger.DidNotReceive().TrackEvent("Download Book");
 
@@ -850,6 +875,7 @@ namespace BloomHarvesterTests
 				harvester.ProcessOneBook(book);
 
 				// Validate
+				VerifyNoExceptions();
 				_fakeTransfer.ReceivedWithAnyArgs(1).HandleDownloadWithoutProgress(default, default);
 				_logger.Received(1).TrackEvent("Download Book");
 
@@ -890,6 +916,126 @@ namespace BloomHarvesterTests
 			string bookDir = Path.Combine(harvester.GetBookCollectionPath(), bookFolderName);
 			if (Directory.Exists(bookDir))
 				Directory.Delete(bookDir);
+		}
+		#endregion
+
+		[TestCase("")]
+		[TestCase("{ \"epub\": { \"harvester\": false } }")]
+		public void ProcessOneBook_SocialMediaThumbnailGenerated_UploadedAndRecordedInShowField(string showStringInitialJson)
+		{
+			var options = GetHarvesterOptionsForProcessOneBookTests();
+			var fakeFileIO = Substitute.For<IFileIO>();
+
+			using (var harvester = GetSubstituteHarvester(options, fileIO: fakeFileIO))
+			{
+				// Yet more test setup
+				var book = BookTests.CreateDefaultBook();
+				if (!String.IsNullOrEmpty(showStringInitialJson))
+					book.Model.Show = JObject.Parse(showStringInitialJson);
+
+				ConfigureFakeFileIODefaults(fakeFileIO, harvester);
+				
+				string thumbInfoPath = Path.Combine(Path.GetTempPath(), $"BloomHarvesterStaging-{harvester.GetUniqueIdentifier()}", "thumbInfo.txt");
+				fakeFileIO.Configure().Exists(thumbInfoPath).Returns(true);
+
+				string bookFolder = Path.Combine(harvester.GetBookCollectionPath(), BookModelTests.kDefaultTitle);
+				string[] thumbnailPaths = new string[]
+					{
+						Path.Combine(bookFolder, "thumbnail-256.png"),
+						Path.Combine(bookFolder, "thumbnail-70.png"),
+						Path.Combine(bookFolder, "thumbnail-300x300.png"),
+					};
+				fakeFileIO.Configure().ReadAllLines(thumbInfoPath).Returns(thumbnailPaths);
+				foreach (var thumbnailPath in thumbnailPaths)
+				{
+					fakeFileIO.Configure().Exists(thumbnailPath).Returns(true);
+				}
+
+				// System under test
+				harvester.ProcessOneBook(book);
+
+				// Validate
+				VerifyNoExceptions();
+
+				// Verify it attempted to upload the thumbnails
+				foreach (var thumbnailPath in thumbnailPaths)
+				{
+					_fakeS3UploadClient.Received(1).UploadFile(thumbnailPath, "fakeUploader@gmail.com/FakeGuid/thumbnails", "max-age=31536000");
+				}
+
+				// Verify the show field
+				var show = (JObject)(book.Model.Show);
+				var isFound = show.TryGetValue("social", out JToken socialShowInfo);
+				Assert.That(isFound, Is.True, "\"social\" show info should exist");
+
+				((JObject)socialShowInfo).TryGetValue("harvester", out JToken socialShowInfoSetByHarvester);
+				Assert.That(socialShowInfoSetByHarvester.Value<bool>(), Is.True, "\"social\" show info should both exist and be set to true");
+			}
+		}
+
+		[TestCase("")]
+		[TestCase("{ \"epub\": { \"harvester\": false } }")]
+		public void ProcessOneBook_SocialMediaThumbnailNotPresent_NotUploadedNorRecordedInShowField(string showStringInitialJson)
+		{
+			var options = GetHarvesterOptionsForProcessOneBookTests();
+			var fakeFileIO = Substitute.For<IFileIO>();
+
+			using (var harvester = GetSubstituteHarvester(options, fileIO: fakeFileIO))
+			{
+				// Yet more test setup
+				var book = BookTests.CreateDefaultBook();
+				if (!String.IsNullOrEmpty(showStringInitialJson))
+					book.Model.Show = JObject.Parse(showStringInitialJson);
+
+				ConfigureFakeFileIODefaults(fakeFileIO, harvester);
+				
+				string thumbInfoPath = Path.Combine(Path.GetTempPath(), $"BloomHarvesterStaging-{harvester.GetUniqueIdentifier()}", "thumbInfo.txt");
+				fakeFileIO.Configure().Exists(thumbInfoPath).Returns(true);
+
+				string bookFolder = Path.Combine(harvester.GetBookCollectionPath(), BookModelTests.kDefaultTitle);
+
+				// Noticeably, the thumbnail-300x300 (used for social media sharing) is not present here
+				string[] thumbnailPaths = new string[]
+					{
+						Path.Combine(bookFolder, "thumbnail-256.png"),
+						Path.Combine(bookFolder, "thumbnail-70.png")
+					};
+				fakeFileIO.Configure().ReadAllLines(thumbInfoPath).Returns(thumbnailPaths);
+				foreach (var thumbnailPath in thumbnailPaths)
+				{
+					fakeFileIO.Configure().Exists(thumbnailPath).Returns(true);
+				}
+
+				string socialMediaThumbnailPath = Path.Combine(bookFolder, "thumbnail-300x300.png");
+				fakeFileIO.Configure().Exists(socialMediaThumbnailPath).Returns(false);
+
+				// System under test
+				harvester.ProcessOneBook(book);
+
+				// Validate
+				VerifyNoExceptions();
+
+				// Verify it attempted to upload the other thumbnails
+				foreach (var thumbnailPath in thumbnailPaths)
+				{
+					_fakeS3UploadClient.Received(1).UploadFile(thumbnailPath, "fakeUploader@gmail.com/FakeGuid/thumbnails", "max-age=31536000");
+				}
+				_fakeS3UploadClient.DidNotReceive().UploadFile(socialMediaThumbnailPath, "fakeUploader@gmail.com/FakeGuid/thumbnails", "max-age=31536000");
+
+				// Verify the show field
+				var show = (JObject)(book.Model.Show);
+				if (!show.TryGetValue("social", out JToken socialShowInfo))
+				{
+					// Test passed. This is the expected behavior.
+					return;
+				}
+				else
+				{
+					// Not really the expected behavior, but false is an acceptable value for it too.
+					((JObject)socialShowInfo).TryGetValue("harvester", out JToken socialShowInfoSetByHarvester);
+					Assert.That(socialShowInfoSetByHarvester.Value<bool>(), Is.False, "\"social\" show info either should not exist, should be set to false");
+				}
+			}
 		}
 		#endregion
 

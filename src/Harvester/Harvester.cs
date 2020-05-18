@@ -1095,7 +1095,7 @@ namespace BloomHarvester
 
 						if (!_options.SkipUploadThumbnails)
 						{
-							UploadThumbnails(thumbnailInfoPath, s3FolderLocation);
+							UploadThumbnails(book, thumbnailInfoPath, s3FolderLocation);
 						}
 
 						if (!_options.SkipUpdatePerceptualHash)
@@ -1178,15 +1178,15 @@ namespace BloomHarvester
 		/// </summary>
 		/// <param name="thumbnailInfoPath">This is a path to a TEXT file which contains information about where to find the actual thumbnails. The thumbnail paths should be written one per line in this file.</param>
 		/// <param name="s3FolderLocation">The S3 path to upload to</param>
-		private void UploadThumbnails(string thumbnailInfoPath, string s3FolderLocation)
+		private void UploadThumbnails(Book book, string thumbnailInfoPath, string s3FolderLocation)
 		{
 			string folderToUploadTo = $"{s3FolderLocation}/thumbnails";
 			_s3UploadClient.DeleteDirectory(folderToUploadTo);
 
-			if (SIL.IO.RobustFile.Exists(thumbnailInfoPath))
+			if (_fileIO.Exists(thumbnailInfoPath))
 			{
 				// First parse the info file, which is NOT the actual thumbnail image bits. It just contains the filepath strings.
-				string[] lines = SIL.IO.RobustFile.ReadAllLines(thumbnailInfoPath);
+				string[] lines = _fileIO.ReadAllLines(thumbnailInfoPath);
 				if (lines == null)
 				{
 					return;
@@ -1195,13 +1195,24 @@ namespace BloomHarvester
 				foreach (var thumbnailPath in lines)
 				{
 					// These paths should point to the locations of the actual thumbnails. Upload them to S3.
-					if (SIL.IO.RobustFile.Exists(thumbnailPath))
+					if (_fileIO.Exists(thumbnailPath))
 					{
 						_logger.TrackEvent("Upload thumbnail");
 						_s3UploadClient.UploadFile(thumbnailPath, folderToUploadTo, "max-age=31536000");	// 60 * 60 * 24 * 365 = 1 year in seconds
+
+						// Mark if the thumbnail to use when sharing to social media is generated and available.
+						if (IsThumbnailForSocialMediaSharing(thumbnailPath))
+						{
+							book.SetHarvesterEvaluation("social", true);
+						}
 					}
 				}
 			}
+		}
+
+		private static bool IsThumbnailForSocialMediaSharing(string thumbnailPath)
+		{
+			return Path.GetFileNameWithoutExtension(thumbnailPath) == "thumbnail-300x300";
 		}
 	}
 }

@@ -198,10 +198,11 @@ namespace BloomHarvesterTests
 			book.SetHarvesterEvaluation("pdf", true);
 			book.SetHarvesterEvaluation("bloomReader", true);
 			book.SetHarvesterEvaluation("readOnline", true);
+			book.SetHarvesterEvaluation("social", true);
 
 			//Verify
 			string bookJson = JsonConvert.SerializeObject(book.Model);
-			string expectedJsonFragment = "\"show\":{\"epub\":{\"harvester\":false},\"pdf\":{\"harvester\":true},\"bloomReader\":{\"harvester\":true},\"readOnline\":{\"harvester\":true}}";
+			string expectedJsonFragment = "\"show\":{\"epub\":{\"harvester\":false},\"pdf\":{\"harvester\":true},\"bloomReader\":{\"harvester\":true},\"readOnline\":{\"harvester\":true},\"social\":{\"harvester\":true}}";
 			Assert.That(bookJson.Contains(expectedJsonFragment), Is.True);
 		}
 
@@ -216,7 +217,7 @@ namespace BloomHarvesterTests
 				HarvesterMajorVersion = 1,
 				HarvesterMinorVersion = 0,
 				HarvestLogEntries = new List<string>(),
-				Show = JsonConvert.DeserializeObject("{\"epub\":{\"harvester\":false, \"librarian\":true, \"user\":true},\"pdf\":{\"harvester\":false, \"librarian\":false, \"user\":false},\"bloomReader\":{\"harvester\":false, \"librarian\":false},\"readOnline\":{\"harvester\":false, \"user\":true}}")
+				Show = JsonConvert.DeserializeObject("{\"epub\":{\"harvester\":false, \"librarian\":true, \"user\":true},\"pdf\":{\"harvester\":false, \"librarian\":false, \"user\":false},\"bloomReader\":{\"harvester\":false, \"librarian\":false},\"readOnline\":{\"harvester\":false, \"user\":true},\"social\":{\"harvester\":false, \"user\":true}}")
 			});
 
 			// System under test
@@ -224,10 +225,11 @@ namespace BloomHarvesterTests
 			book.SetHarvesterEvaluation("pdf", true);
 			book.SetHarvesterEvaluation("bloomReader", true);
 			book.SetHarvesterEvaluation("readOnline", true);
+			book.SetHarvesterEvaluation("social", true);
 
 			//Verify
 			string bookJson = JsonConvert.SerializeObject(book.Model);
-			string expectedJsonFragment = "\"show\":{\"epub\":{\"harvester\":true,\"librarian\":true,\"user\":true},\"pdf\":{\"harvester\":true,\"librarian\":false,\"user\":false},\"bloomReader\":{\"harvester\":true,\"librarian\":false},\"readOnline\":{\"harvester\":true,\"user\":true}}";
+			string expectedJsonFragment = "\"show\":{\"epub\":{\"harvester\":true,\"librarian\":true,\"user\":true},\"pdf\":{\"harvester\":true,\"librarian\":false,\"user\":false},\"bloomReader\":{\"harvester\":true,\"librarian\":false},\"readOnline\":{\"harvester\":true,\"user\":true},\"social\":{\"harvester\":true,\"user\":true}}";
 			Assert.That(bookJson.Contains(expectedJsonFragment), Is.True);
 		}
 		#endregion

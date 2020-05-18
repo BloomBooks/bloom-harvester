@@ -208,6 +208,14 @@ namespace BloomHarvester
 					else
 						Model.Show.readOnline.harvester = enabled;
 					break;
+				case "social":
+					if (Model.Show.social == null)
+						Model.Show.social = setting;
+					else
+						Model.Show.social.harvester = enabled;
+					break;
+				default:
+					throw new ArgumentException($"SetHarvesterEvaluation(): Unrecognized artifact type \"{artifact}\"");
 			}
 		}
 
