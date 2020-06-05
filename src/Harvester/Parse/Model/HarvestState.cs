@@ -8,6 +8,7 @@
 		InProgress,
 		Done,
 		Failed,
+		FailedIndefinitely, // set manually for books that shouldn't be retried until the book is updated
 		Aborted
 	}
 }

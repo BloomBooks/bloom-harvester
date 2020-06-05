@@ -264,7 +264,32 @@ namespace BloomHarvesterTests
 				Assert.AreEqual(PROCESS, result, $"Failed for currentVersion={currentVersion}, previousVersion={book.HarvesterMajorVersion}.{book.HarvesterMinorVersion}");
 			}
 		}
-		
+
+		[Test]
+		[TestCase(HarvestMode.All)]
+		[TestCase(HarvestMode.Default)]
+		[TestCase(HarvestMode.ForceAll)]
+		[TestCase(HarvestMode.NewOrUpdatedOnly)]
+		[TestCase(HarvestMode.RetryFailuresOnly)]
+		public void ShouldProcessBook_FailedIndefinitelyState_ProcessOnlyIfForced(HarvestMode mode)
+		{
+			// Even though it might look like we should skip processing because we still don't have this non-existent font,
+			// this test covers the case where the new/updated state of the book causes us to want to reprocess it anyway.
+			BookModel book = new BookModel()
+			{
+				HarvestState = HarvestState.FailedIndefinitely.ToString(),
+				HarvesterMajorVersion = 2,
+				HarvesterMinorVersion = 0,
+			};
+			var currentVersion = new Version(2, 2);
+
+			bool result = Harvester.ShouldProcessBook(book, mode, currentVersion, out string reason);
+			if (mode != HarvestMode.ForceAll)
+				Assert.AreEqual(SKIP, result, $"Failed for mode={mode} when state=FailedIndefinitely");
+			else
+				Assert.AreEqual(PROCESS, result, $"Failed for mode={mode} when state=FailedIndefinitely");
+		}
+
 		[Test]
 		public void ShouldProcessBook_MissingFont_Skipped()
 		{
@@ -499,9 +524,17 @@ namespace BloomHarvesterTests
 		}
 
 		[Test]
-		public void ProcessOneBook_HarvesterException_ProcessBookErrorRecorded()
+		[TestCase(HarvestState.New)]
+		[TestCase(HarvestState.Failed)]
+		[TestCase(HarvestState.Aborted)]
+		[TestCase(HarvestState.Done)]
+		[TestCase(HarvestState.Updated)]
+		[TestCase(HarvestState.Unknown)]
+		[TestCase(HarvestState.FailedIndefinitely)]
+		public void ProcessOneBook_HarvesterException_ProcessBookErrorRecorded(HarvestState initialState)
 		{
 			var options = GetHarvesterOptionsForProcessOneBookTests();
+			options.Mode = HarvestMode.ForceAll;
 			var parseClient = Substitute.For<IParseClient>();
 			parseClient.Configure().UpdateObject(default, default, default).ReturnsForAnyArgs(args =>
 			{
@@ -512,6 +545,7 @@ namespace BloomHarvesterTests
 			{
 				// Test Setup
 				var book = BookTests.CreateDefaultBook();
+				book.Model.HarvestState = initialState.ToString();
 				ConfigureForFakeIndexHtmFile(harvester, book.Model.Title);
 
 				// System under test				
@@ -521,7 +555,10 @@ namespace BloomHarvesterTests
 				var logEntries = book.Model.GetValidLogEntries();
 				var anyRelevantErrors = logEntries.Any(x => x.Type == LogType.ProcessBookError);
 				Assert.That(anyRelevantErrors, Is.True, "The relevant error type was not found");
-				Assert.That(book.Model.HarvestState, Is.EqualTo("Failed"), "HarvestState should be failed");
+				if (initialState == HarvestState.FailedIndefinitely)
+					Assert.That(book.Model.HarvestState, Is.EqualTo("FailedIndefinitely"), "HarvestState should be failed indefinitely");
+				else
+					Assert.That(book.Model.HarvestState, Is.EqualTo("Failed"), "HarvestState should be failed");
 
 				// Validate that the code did in fact attempt to report an error
 				_fakeIssueReporter.ReceivedWithAnyArgs().ReportException(default, default, default, default);

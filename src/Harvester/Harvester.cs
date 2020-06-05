@@ -37,6 +37,7 @@ namespace BloomHarvester
 
 		// These vars handle the application being exited while a book is still InProgress
 		private string _currentBookId = null;   // The ID of the current book for as long as that book has the "InProgress" state set on it. Should be set back to null/empty when the state is no longer "InProgress"
+		private bool _currentBookFailedIndefinitely;	// flag that this book started with HarvestState = "FailedIndefinitely" and should stay there unless successful
 		static ConsoleEventDelegate consoleExitHandler;
 		private delegate bool ConsoleEventDelegate(int eventType);
 
@@ -268,7 +269,11 @@ namespace BloomHarvester
 				if (!String.IsNullOrEmpty(_currentBookId))
 				{
 					var updateOp = BookModel.GetNewBookUpdateOperation();
-					updateOp.UpdateFieldWithString(BookModel.kHarvestStateField, Parse.Model.HarvestState.Aborted.ToString());
+
+					if (_currentBookFailedIndefinitely)
+						updateOp.UpdateFieldWithJson(BookModel.kHarvestStateField, HarvestState.FailedIndefinitely.ToString());
+					else
+						updateOp.UpdateFieldWithString(BookModel.kHarvestStateField, HarvestState.Aborted.ToString());
 					_parseClient.UpdateObject(BookModel.GetStaticParseClassName(), _currentBookId, updateOp.ToJson());
 					return true;
 				}
@@ -574,6 +579,7 @@ namespace BloomHarvester
 				// Parse DB initial updates
 				// We want to write that it is InProgress as soon as possible, but we also want a copy of the original state
 				var originalBookModel  = (BookModel)book.Model.Clone();
+				_currentBookFailedIndefinitely = originalBookModel.HarvestState?.ToLowerInvariant() == HarvestState.FailedIndefinitely.ToString().ToLowerInvariant();
 				book.Model.HarvestState = Parse.Model.HarvestState.InProgress.ToString();
 				book.Model.HarvesterId = this.Identifier;
 				book.Model.HarvesterMajorVersion = Version.Major;
@@ -648,7 +654,10 @@ namespace BloomHarvester
 				}
 				else
 				{
-					book.Model.HarvestState = Parse.Model.HarvestState.Failed.ToString();
+					if (_currentBookFailedIndefinitely)
+						book.Model.HarvestState = HarvestState.FailedIndefinitely.ToString();
+					else
+						book.Model.HarvestState = HarvestState.Failed.ToString();
 				}
 
 				// Write the updates
@@ -684,7 +693,10 @@ namespace BloomHarvester
 				{
 					try
 					{
-						book.Model.HarvestState = Parse.Model.HarvestState.Failed.ToString();
+						if (_currentBookFailedIndefinitely)
+							book.Model.HarvestState = HarvestState.FailedIndefinitely.ToString();
+						else
+							book.Model.HarvestState = HarvestState.Failed.ToString();
 						book.Model.HarvesterId = this.Identifier;
 						if (book.Model.HarvestLogEntries == null)
 						{
@@ -785,6 +797,25 @@ namespace BloomHarvester
 		{
 			Debug.Assert(book != null, "ShouldProcessBook(): Book was null");
 
+			if (!Enum.TryParse(book.HarvestState, out HarvestState state))
+			{
+				state = HarvestState.Unknown;
+			}
+
+			if (state == HarvestState.FailedIndefinitely)
+			{
+				if (harvestMode == HarvestMode.ForceAll)
+				{
+					reason = "PROCESS: Mode = HarvestForceAll";
+					return true;
+				}
+				else
+				{
+					reason = "SKIP: Marked as failed indefinitely";
+					return false;
+				}
+			}
+
 			// Note: Beware, IsInCirculation can also be null, and we DO want to process books where isInCirculation==null
 			if (book.IsInCirculation == false)
 			{
@@ -800,10 +831,6 @@ namespace BloomHarvester
 				}
 			}
 
-			if (!Enum.TryParse(book.HarvestState, out Parse.Model.HarvestState state))
-			{
-				state = Parse.Model.HarvestState.Unknown;
-			}
 			bool isNewOrUpdatedState = (state == Parse.Model.HarvestState.New || state == Parse.Model.HarvestState.Updated);
 
 			// This is an important exception-to-the-rule case for almost every scenario,
