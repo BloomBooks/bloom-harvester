@@ -23,8 +23,8 @@ namespace BloomHarvester.WebLibraryIntegration
 			this.EnvironmentSetting = environment;
 		}
 
-		private static readonly string _youTrackProjectKeyErrors = "BH";  // Or "SB" for Sandbox
-		private static readonly string _youTrackProjectKeyMissingFonts = "BH";  // Or "SB" for Sandbox
+		private static string _youTrackProjectKeyErrors = "BH";  // Or "SB" for Sandbox
+		private static string _youTrackProjectKeyMissingFonts = "BH";  // Or "SB" for Sandbox
 
 		public EnvironmentSetting EnvironmentSetting { get; set; }
 
@@ -33,14 +33,23 @@ namespace BloomHarvester.WebLibraryIntegration
 		private static YouTrackIssueConnector _instance;
 
 		// Singleton Instance
-		public static YouTrackIssueConnector GetInstance(EnvironmentSetting environment)
+		public static YouTrackIssueConnector GetInstance(EnvironmentSetting environment, string projectKey = "BH")
 		{
 			if (_instance == null || _instance.EnvironmentSetting != environment)
 				_instance = new YouTrackIssueConnector(environment);
-
+			_youTrackProjectKeyErrors = projectKey;
+			_youTrackProjectKeyMissingFonts = projectKey;
 			return _instance;
 		}
 
+		// This struct and the following list of structs is used only for testing (EnvironmentSetting.Test).
+		internal struct ErrorReport
+		{
+			public string ProjectKey;
+			public string Summary;
+			public string Description;
+		}
+		internal List<ErrorReport> TestErrorReports = new List<ErrorReport>();
 
 		private void ReportToYouTrack(string projectKey, string summary, string description, bool exitImmediately)
 		{
@@ -49,6 +58,12 @@ namespace BloomHarvester.WebLibraryIntegration
 			Console.Error.WriteLine(description);
 			Console.Error.WriteLine("==========================");
 			Console.Error.WriteLine("==========================");
+			if (EnvironmentSetting == EnvironmentSetting.Test)
+			{
+				TestErrorReports.Add(new ErrorReport
+					{ProjectKey = projectKey, Summary = summary, Description = description});
+				return;
+			}
 #if DEBUG
 			Console.Out.WriteLine("***Issue caught but skipping creating YouTrack issue because running in DEBUG mode.***");
 #else
@@ -89,15 +104,22 @@ namespace BloomHarvester.WebLibraryIntegration
 			return submitter.SubmitToYouTrack(summary, description);
 		}
 
+		private string FixTitleForSummary(BookModel bookModel)
+		{
+			if (String.IsNullOrEmpty(bookModel?.Title?.Trim()))
+				return String.Empty;
+			return $" Title: \"{bookModel.Title.Replace('\n',' ').Replace('\r',' ').Trim()}\" ";
+		}
+
 		public void ReportException(Exception exception, string additionalDescription, BookModel bookModel, bool exitImmediately = true)
 		{
-			string summary = $"[BH] [{this.EnvironmentSetting}] Exception \"{exception.Message}\"";
+			string summary = $"[BH] [{this.EnvironmentSetting}]{FixTitleForSummary(bookModel)} Exception: \"{exception.Message}\"";
 			string description =
 				additionalDescription + "\n\n" +
 				GetDiagnosticInfo(bookModel, this.EnvironmentSetting) + "\n\n" +
 				GetIssueDescriptionFromException(exception);
 
-			ReportToYouTrack(_youTrackProjectKeyErrors, summary, description, exitImmediately);
+			ReportToYouTrack(EnvironmentSetting==EnvironmentSetting.Test?"SB":_youTrackProjectKeyErrors, summary, description, exitImmediately);
 		}
 
 		private static string GetIssueDescriptionFromException(Exception exception)
@@ -140,8 +162,7 @@ namespace BloomHarvester.WebLibraryIntegration
 
 		public void ReportError(string errorSummary, string errorDescription, string errorDetails, BookModel bookModel = null)
 		{
-			string summary = $"[BH] [{this.EnvironmentSetting}] Error: {errorSummary}";
-
+			string summary = $"[BH] [{this.EnvironmentSetting}]{FixTitleForSummary(bookModel)} Error: {errorSummary}";
 			string description =
 				errorDescription + '\n' +
 				'\n' +
@@ -153,7 +174,7 @@ namespace BloomHarvester.WebLibraryIntegration
 
 		public void ReportMissingFont(string missingFontName, string harvesterId, BookModel bookModel = null)
 		{
-			string summary = $"[BH] [{this.EnvironmentSetting}] Missing Font: \"{missingFontName}\"";
+			string summary = $"[BH] [{this.EnvironmentSetting}]{FixTitleForSummary(bookModel)} Missing Font: \"{missingFontName}\"";
 
 			string description = $"Missing font \"{missingFontName}\" on machine \"{harvesterId}\".\n\n";
 			description += GetDiagnosticInfo(bookModel, this.EnvironmentSetting);
