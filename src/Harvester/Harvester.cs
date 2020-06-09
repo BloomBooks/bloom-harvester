@@ -625,25 +625,27 @@ namespace BloomHarvester
 				List<LogEntry> harvestLogEntries = CheckForMissingFontErrors(downloadBookDir, book);
 				bool anyFontsMissing = harvestLogEntries.Any();
 				isSuccessful &= !anyFontsMissing;
+				if (anyFontsMissing)
+				{
+					_options.SkipUploadBloomDigitalArtifacts = true;
+					_options.SkipUploadEPub = true;
+				}
 
 				// More processing
-				if (isSuccessful)
+				var warnings = book.FindBookWarnings();
+				harvestLogEntries.AddRange(warnings);
+
+				if (!_options.ReadOnly)
 				{
-					var warnings = book.FindBookWarnings();
-					harvestLogEntries.AddRange(warnings);
+					var analyzer = GetAnalyzer(downloadBookDir);
+					var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
+					book.Analyzer = analyzer;
 
-					if (!_options.ReadOnly)
-					{
-						var analyzer = GetAnalyzer(downloadBookDir);
-						var collectionFilePath = analyzer.WriteBloomCollection(downloadBookDir);
-						book.Analyzer = analyzer;
+					isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book, harvestLogEntries);
+					// If not successful, update artifact suitability to say all false. (BL-8413)
+					UpdateSuitabilityofArtifacts(book, analyzer, isSuccessful);
 
-						isSuccessful &= CreateArtifacts(decodedUrl, downloadBookDir, collectionFilePath, book, harvestLogEntries);
-						// If not successful, update artifact suitability to say all false. (BL-8413)
-						UpdateSuitabilityofArtifacts(book, analyzer, isSuccessful);
-
-						book.SetTags();
-					}
+					book.SetTags();
 				}
 
 				// Finalize the state
@@ -1001,7 +1003,7 @@ namespace BloomHarvester
 			return urlWithoutTitle;
 		}
 
-		// Returns true if at least one font is missing
+		// Returns list of log entries for missing fonts
 		internal List<LogEntry> CheckForMissingFontErrors(string bookPath, Book book)
 		{
 			var harvestLogEntries = new List<LogEntry>();
