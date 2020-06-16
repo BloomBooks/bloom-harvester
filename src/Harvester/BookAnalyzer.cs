@@ -9,6 +9,9 @@ using System.Xml.Linq;
 using Bloom;
 using Bloom.Api;
 using Bloom.Book;
+using CoenM.ImageHash.HashAlgorithms;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using SIL.Xml;
 
 namespace BloomHarvester
@@ -21,6 +24,9 @@ namespace BloomHarvester
 		bool IsEpubSuitable();
 
 		int GetBookComputedLevel();
+
+		string GetBestPHashImageSource();
+		ulong ComputeImageHash(string path);
 	}
 
 	/// <summary>
@@ -397,6 +403,111 @@ namespace BloomHarvester
 				currentElement = currentElement.ParentNode as XmlElement;
 			}
 
+			return null;
+		}
+
+		/// <summary>
+		/// Compute the perceptual hash of the given image file.  We need to handle black and white PNG
+		/// files which carry the image data in only the alpha channel.  Other image files are trivial
+		/// to handle by comparison with the CoenM.ImageSharp.ImageHash functions.
+		/// </summary>
+		public ulong ComputeImageHash(string path)
+		{
+			using (var image = (Image<Rgba32>)Image.Load(path))
+			{
+				// check whether we have R=G=B=0 (ie, black) for all pixels, presumably with A varying.
+				var allBlack = true;
+				for (int x = 0; allBlack && x < image.Width; ++x)
+				{
+					for (int y = 0; allBlack && y < image.Height; ++y)
+					{
+						var pixel = image[x, y];
+						if (pixel.R != 0 || pixel.G != 0 || pixel.B != 0)
+							allBlack = false;
+					}
+				}
+				if (allBlack)
+				{
+					for (int x = 0; x < image.Width; ++x)
+					{
+						for (int y = 0; y < image.Height; ++y)
+						{
+							// If the pixels all end up the same because A never changes, we're no
+							// worse off because the hash result will still be all zero bits.
+							var pixel = image[x, y];
+							pixel.R = pixel.A;
+							pixel.G = pixel.A;
+							pixel.B = pixel.A;
+							image[x, y] = pixel;
+						}
+					}
+				}
+				var hashAlgorithm = new PerceptualHash();
+				return hashAlgorithm.Hash(image);
+			}
+		}
+
+		/// <summary>
+		/// Finds the image to use when computing the perceptual hash for the book.
+		/// </summary>
+		/// <remarks>
+		/// Precondition: Assumes that pages were written to the HTML in the order of their page number
+		/// </remarks>
+		public string GetBestPHashImageSource()
+		{
+			// Find the first picture on a content page
+			// We use the numberedPage class to determine this now
+			// You could also try data-page-number, but it's not guaranteed to use numbers like "1", "2", "3"... the numbers may be written in the language of the book (BL-8346)
+			var firstContentImageContainerPath = "//div[contains(@class,'bloom-page')][contains(@class, 'numberedPage')]//div[contains(@class,'bloom-imageContainer')]";
+			var firstContentImageElement = _dom.SelectSingleNode($"{firstContentImageContainerPath}/img");
+			if (firstContentImageElement != null)
+			{
+				return firstContentImageElement.GetAttribute("src");
+			}
+			var fallbackFirstContentImage = _dom.SelectSingleNode(firstContentImageContainerPath);
+			if (fallbackFirstContentImage != null)
+			{
+				return GetImageElementUrl(fallbackFirstContentImage)?.UrlEncoded;
+			}
+			// No content page images found.  Try the cover page
+			var coverImageContainerPath = "//div[contains(@class,'bloom-page') and @data-xmatter-page='frontCover']//div[contains(@class,'bloom-imageContainer')]";
+			var coverImg = _dom.SelectSingleNode($"{coverImageContainerPath}/img");
+			if (coverImg != null)
+			{
+				return coverImg.GetAttribute("src");
+			}
+			var fallbackCoverImg = _dom.SelectSingleNode(coverImageContainerPath);
+			if (fallbackCoverImg != null)
+			{
+				return GetImageElementUrl(fallbackCoverImg)?.UrlEncoded;
+			}
+			// Nothing on the cover page either. Give up.
+			return null;
+		}
+
+		/// <summary>
+		/// Gets the url for the image, either from an img element or any other element that has
+		/// an inline style with background-image set.
+		/// </summary>
+		/// <remarks>
+		/// This method is adapted (largely copied) from Bloom Desktop, so consider that if you
+		/// need to modify this method.  The method is Bloom Desktop is not used because it would
+		/// require adding a reference to Geckofx which is neither needed nor wanted here.
+		/// </remarks>
+		private UrlPathString GetImageElementUrl(XmlElement imgOrDivWithBackgroundImage)
+		{
+			if (imgOrDivWithBackgroundImage.Name.ToLower() == "img")
+			{
+				var src = imgOrDivWithBackgroundImage.GetAttribute("src");
+				return UrlPathString.CreateFromUrlEncodedString(src);
+			}
+			var styleRule = imgOrDivWithBackgroundImage.GetAttribute("style") ?? "";
+			var regex = new Regex("background-image\\s*:\\s*url\\((.*)\\)", RegexOptions.IgnoreCase);
+			var match = regex.Match(styleRule);
+			if (match.Groups.Count == 2)
+			{
+				return UrlPathString.CreateFromUrlEncodedString(match.Groups[1].Value.Trim(new[] {'\'', '"'}));
+			}
 			return null;
 		}
 	}
