@@ -14,6 +14,9 @@ using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomTemp;
+using CoenM.ImageHash.HashAlgorithms;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 
 namespace BloomHarvester
@@ -645,6 +648,9 @@ namespace BloomHarvester
 					// If not successful, update artifact suitability to say all false. (BL-8413)
 					UpdateSuitabilityofArtifacts(book, analyzer, isSuccessful);
 
+					if (!_options.SkipUpdatePerceptualHash)
+						isSuccessful &= UpdatePerceptualHash(book, analyzer, downloadBookDir);
+
 					book.SetTags();
 				}
 
@@ -710,6 +716,80 @@ namespace BloomHarvester
 			}
 
 			return isSuccessful;
+		}
+
+		private bool UpdatePerceptualHash(Book book, IBookAnalyzer analyzer, string downloadBookDir)
+		{
+			var isSuccessful = true;
+			var startTime = DateTime.Now;
+			string src = null;
+			try
+			{
+				src = analyzer.GetBestPHashImageSource();
+				if (!String.IsNullOrEmpty(src) && src.ToLowerInvariant() != "placeholder.png")
+				{
+					string decodedSrc = HttpUtility.UrlDecode(src);
+					var path = Path.Combine(downloadBookDir, decodedSrc);
+					ulong imageHash = ComputePhashOfImageFile(path);
+					book.Model.PHashOfFirstContentImage = $"{imageHash:X16}";
+				}
+				else
+				{
+					book.Model.PHashOfFirstContentImage = "null";
+				}
+			}
+			catch (Exception e)
+			{
+				_logger.LogWarn("Caught exception computing phash for {0}: {1}", src, e);
+				_logger.LogWarn(e.StackTrace);
+				_issueReporter.ReportException(e, $"Caught exception computing phash for {src}", book.Model, exitImmediately: false);
+				book.Model.PHashOfFirstContentImage = null;
+				isSuccessful = false;
+			}
+			var endTime = DateTime.Now;
+			_logger.LogInfo("Computing PHash=\"{0}\" for {1} took {2}", book.Model.PHashOfFirstContentImage, src, endTime - startTime);
+			return isSuccessful;
+		}
+
+		/// <summary>
+		/// Compute the perceptual hash of the given image file.  We need to handle black and white PNG
+		/// files which carry the image data in only the alpha channel.  Other image files are trivial
+		/// to handle by comparison by the CoenM.ImageSharp.ImageHash functions.
+		/// </summary>
+		private ulong ComputePhashOfImageFile(string path)
+		{
+			using (var image = (Image<Rgba32>)Image.Load(path))
+			{
+				// check whether we have R=G=B=0 (ie, black) for all pixels, presumably with A varying.
+				var allBlack = true;
+				for (int x = 0; allBlack && x < image.Width; ++x)
+				{
+					for (int y = 0; allBlack && y < image.Height; ++y)
+					{
+						var pixel = image[x, y];
+						if (pixel.R != 0 || pixel.G != 0 || pixel.B != 0)
+							allBlack = false;
+					}
+				}
+				if (allBlack)
+				{
+					// If the pixels all end up the same because A never changes, we're no worse off
+					// because the hash result will still be all zero bits.
+					for (int x = 0; x < image.Width; ++x)
+					{
+						for (int y = 0; y < image.Height; ++y)
+						{
+							var pixel = image[x, y];
+							pixel.R = pixel.A;
+							pixel.G = pixel.A;
+							pixel.B = pixel.A;
+							image[x, y] = pixel;
+						}
+					}
+				}
+				var hashAlgorithm = new PerceptualHash();
+				return hashAlgorithm.Hash(image);
+			}
 		}
 
 		private void SetFailedState(Book book)
@@ -1068,7 +1148,6 @@ namespace BloomHarvester
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomd");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
-					string perceptualHashInfoPath = Path.Combine(folderForZipped.FolderPath, "pHashInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={downloadBookDir}\" \"--collectionPath={collectionFilePath}\"";
 					if (!_options.SkipUploadBloomDigitalArtifacts || !_options.SkipUpdateMetadata)
@@ -1085,11 +1164,6 @@ namespace BloomHarvester
 					if (!_options.SkipUploadThumbnails)
 					{
 						bloomArguments += $" \"--thumbnailOutputInfoPath={thumbnailInfoPath}\"";
-					}
-
-					if (!_options.SkipUpdatePerceptualHash)
-					{
-						bloomArguments += $" \"--pHashOutputInfoPath={perceptualHashInfoPath}\"";
 					}
 
 					// Start a Bloom command line in a separate process
@@ -1162,11 +1236,6 @@ namespace BloomHarvester
 						if (!_options.SkipUploadThumbnails)
 						{
 							UploadThumbnails(book, thumbnailInfoPath, s3FolderLocation);
-						}
-
-						if (!_options.SkipUpdatePerceptualHash)
-						{
-							book.UpdatePerceptualHash(perceptualHashInfoPath);
 						}
 
 						if (!_options.SkipUpdateMetadata)
