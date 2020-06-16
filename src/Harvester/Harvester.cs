@@ -623,6 +623,9 @@ namespace BloomHarvester
 					// If not successful, update artifact suitability to say all false. (BL-8413)
 					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontsMissing);
 
+					if (!_options.SkipUpdatePerceptualHash)
+						isSuccessful &= UpdatePerceptualHash(book, analyzer, collectionBookDir);
+
 					book.SetTags();
 				}
 
@@ -746,6 +749,39 @@ namespace BloomHarvester
 				Directory.Delete(collectionBookDir, true); // best to be safe...
 			DirectoryHelper.Copy(downloadBookDir, collectionBookDir, true);
 			return collectionBookDir;
+		}
+
+		private bool UpdatePerceptualHash(Book book, IBookAnalyzer analyzer, string downloadBookDir)
+		{
+			var isSuccessful = true;
+			var startTime = DateTime.Now;
+			string src = null;
+			try
+			{
+				src = analyzer.GetBestPHashImageSource();
+				if (!String.IsNullOrEmpty(src) && src.ToLowerInvariant() != "placeholder.png")
+				{
+					string decodedSrc = HttpUtility.UrlDecode(src);
+					var path = Path.Combine(downloadBookDir, decodedSrc);
+					ulong imageHash = analyzer.ComputeImageHash(path);
+					book.Model.PHashOfFirstContentImage = $"{imageHash:X16}";
+				}
+				else
+				{
+					book.Model.PHashOfFirstContentImage = null;
+				}
+			}
+			catch (Exception e)
+			{
+				_logger.LogWarn("Caught exception computing phash for {0}: {1}", src, e);
+				_logger.LogWarn(e.StackTrace);
+				_issueReporter.ReportException(e, $"Caught exception computing phash for {src}", book.Model, exitImmediately: false);
+				book.Model.PHashOfFirstContentImage = null;
+				isSuccessful = false;
+			}
+			var endTime = DateTime.Now;
+			_logger.LogVerbose("Computing PHash=\"{0}\" for {1}/{2} took {3}", book.Model.PHashOfFirstContentImage, book.Model.ObjectId, src, endTime - startTime);
+			return isSuccessful;
 		}
 
 		private void SetFailedState(Book book)
@@ -1110,7 +1146,6 @@ namespace BloomHarvester
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomd");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
-					string perceptualHashInfoPath = Path.Combine(folderForZipped.FolderPath, "pHashInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
 					if (!_options.SkipUploadBloomDigitalArtifacts || !_options.SkipUpdateMetadata)
@@ -1127,11 +1162,6 @@ namespace BloomHarvester
 					if (!_options.SkipUploadThumbnails)
 					{
 						bloomArguments += $" \"--thumbnailOutputInfoPath={thumbnailInfoPath}\"";
-					}
-
-					if (!_options.SkipUpdatePerceptualHash)
-					{
-						bloomArguments += $" \"--pHashOutputInfoPath={perceptualHashInfoPath}\"";
 					}
 
 					// Start a Bloom command line in a separate process
@@ -1204,11 +1234,6 @@ namespace BloomHarvester
 						if (!_options.SkipUploadThumbnails)
 						{
 							UploadThumbnails(book, thumbnailInfoPath, s3FolderLocation);
-						}
-
-						if (!_options.SkipUpdatePerceptualHash)
-						{
-							book.UpdatePerceptualHash(perceptualHashInfoPath);
 						}
 
 						if (!_options.SkipUpdateMetadata)
