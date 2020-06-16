@@ -665,9 +665,12 @@ namespace BloomHarvesterTests
 					args[1] = true;	// Report success
 					return missingFonts;
 				});
+			var fakeAnalyzer = Substitute.For<IBookAnalyzer>();
+			fakeAnalyzer.Configure().GetBestPHashImageSource().Returns("test.png");	// any filename is okay except placeholder.png
+			fakeAnalyzer.Configure().ComputeImageHash(default).ReturnsForAnyArgs(args => (ulong)0x123456789ABCDEF);
 			var fakeFileIO = Substitute.For<IFileIO>();
 
-			using (var harvester = GetSubstituteHarvester(options, fontChecker: fakeFontChecker, fileIO:fakeFileIO))
+			using (var harvester = GetSubstituteHarvester(options, fontChecker: fakeFontChecker, fileIO:fakeFileIO, bookAnalyzer:fakeAnalyzer))
 			{
 				// Test Setup
 				var book = BookTests.CreateDefaultBook(fakeFileIO);
@@ -689,10 +692,6 @@ namespace BloomHarvesterTests
 				{
 					fakeFileIO.Configure().Exists(thumbnailPath).Returns(true);
 				}
-
-				var phashPath = Path.Combine(Path.GetTempPath(), $"BHStaging-{harvester.GetUniqueIdentifier()}", "pHashInfo.txt");
-				fakeFileIO.Configure().Exists(phashPath).Returns(true);
-				fakeFileIO.Configure().ReadAllText(phashPath).Returns("0x12345678");
 
 				// System under test
 				harvester.ProcessOneBook(book);
@@ -724,12 +723,12 @@ namespace BloomHarvesterTests
 				Assert.That(socialShowInfoSetByHarvester.Value<bool>(), Is.True, "\"social\" show info should both exist and be set to true");
 
 				// Verify the phash field
-				Assert.That(book.Model.PHashOfFirstContentImage, Is.EqualTo("0x12345678"), "phash should be set to expected value");
+				Assert.That(book.Model.PHashOfFirstContentImage, Is.EqualTo("0123456789ABCDEF"), "phash should be set to expected value");
 
 				_fakeParseClient.ReceivedWithAnyArgs(2).UpdateObject("books", "FakeObjectId", "...");
 
 				// This may be too fragile to keep.  It's a pity there isn't a way to get the arguments back to check inside them instead of only exact matching...
-				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\"],\"phashOfFirstContentImage\":\"0x12345678\",\"show\":{\"social\":{\"harvester\":true}},\"updateSource\":\"bloomHarvester\"}";
+				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\"],\"phashOfFirstContentImage\":\"0123456789ABCDEF\",\"show\":{\"social\":{\"harvester\":true}},\"updateSource\":\"bloomHarvester\"}";
 				_fakeParseClient.Received(1).UpdateObject("books", "FakeObjectId", updateJson);
 			}
 		}
