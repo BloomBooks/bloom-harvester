@@ -621,7 +621,7 @@ namespace BloomHarvester
 					isSuccessful &= CreateArtifacts(decodedUrl, collectionBookDir, collectionFilePath, book,
 						harvestLogEntries);
 					// If not successful, update artifact suitability to say all false. (BL-8413)
-					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful);
+					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontsMissing);
 
 					book.SetTags();
 				}
@@ -805,16 +805,16 @@ namespace BloomHarvester
 			return BookAnalyzer.FromFolder(collectionBookDir);
 		}
 
-		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful)
+		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful, bool anyFontsMissing)
 		{
-			if (!_options.SkipUploadEPub)
+			if (!_options.SkipUploadEPub || anyFontsMissing)
 			{
 				book.SetHarvesterEvaluation("epub", isSuccessful && analyzer.IsEpubSuitable());
 			}
 
 			// harvester never makes pdfs at the moment.
 
-			if (!_options.SkipUploadBloomDigitalArtifacts)
+			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontsMissing)
 			{
 				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable();
 				book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
