@@ -10,6 +10,7 @@ namespace BloomHarvester.LogEntries
 		MissingBloomDigitalIndex,
 		MissingFont,
 		ProcessBookError,
-		TimeoutError
+		TimeoutError,
+		ArtifactSuitability
 	}
 }
