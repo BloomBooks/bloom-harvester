@@ -571,6 +571,9 @@ namespace BloomHarvester
 		{
 			bool isSuccessful = true;
 			string collectionBookDir = null;
+			// save original values of these options in case they're needed.
+			var skipUploadEPub = _options.SkipUploadEPub;
+			var skipUploadBloomDigitalArtifacts = _options.SkipUploadBloomDigitalArtifacts;
 			try
 			{
 				string message = $"Processing: {book.Model.BaseUrl}";
@@ -621,7 +624,7 @@ namespace BloomHarvester
 					isSuccessful &= CreateArtifacts(decodedUrl, collectionBookDir, collectionFilePath, book,
 						harvestLogEntries);
 					// If not successful, update artifact suitability to say all false. (BL-8413)
-					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontsMissing);
+					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontsMissing, harvestLogEntries);
 
 					book.SetTags();
 				}
@@ -676,8 +679,19 @@ namespace BloomHarvester
 						{
 							book.Model.HarvestLogEntries = new List<string>();
 						}
-						var logEntry = new LogEntry(LogLevel.Error, LogType.ProcessBookError, errorMessage);
-						book.Model.HarvestLogEntries.Add(logEntry.ToString());
+						var logEntries = new List<LogEntry>();
+						logEntries.Add(new LogEntry(LogLevel.Error, LogType.ProcessBookError, errorMessage));
+						logEntries.Add(new LogEntry(LogLevel.Warn, LogType.ArtifactSuitability, "No ePUB/BloomPub because an exception was thrown"));
+						book.Model.HarvestLogEntries.AddRange(logEntries.Select(x => x.ToString()).ToList());
+						if (!skipUploadEPub)
+						{
+							book.SetHarvesterEvaluation("epub", false);
+						}
+						if (!skipUploadBloomDigitalArtifacts)
+						{
+							book.SetHarvesterEvaluation("bloomReader", false);
+							book.SetHarvesterEvaluation("readOnline", false);
+						}
 						book.Model.FlushUpdateToDatabase(_parseClient);
 					}
 					catch (Exception)
@@ -811,18 +825,24 @@ namespace BloomHarvester
 		/// are marked true or false for showing only if we tried to make them (ie, didn't skip them).  If we skipped one or both
 		/// of them, the previous evaluation is left alone for whatever was skipped.
 		/// </summary>
-		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful, bool anyFontsMissing)
+		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful, bool anyFontsMissing,
+			List<LogEntry> harvestLogEntries)
 		{
+			if (anyFontsMissing)
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "No ePUB/BloomPub because of missing font(s)"));
+			else if (!isSuccessful)
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub because CreateArtifacts failed."));
+
 			if (!_options.SkipUploadEPub || anyFontsMissing)
 			{
-				book.SetHarvesterEvaluation("epub", isSuccessful && analyzer.IsEpubSuitable());
+				book.SetHarvesterEvaluation("epub", isSuccessful && analyzer.IsEpubSuitable(harvestLogEntries));
 			}
 
 			// harvester never makes pdfs at the moment.
 
 			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontsMissing)
 			{
-				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable();
+				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable(harvestLogEntries);
 				book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
 				book.SetHarvesterEvaluation("readOnline", isBloomReaderGood);
 			}
