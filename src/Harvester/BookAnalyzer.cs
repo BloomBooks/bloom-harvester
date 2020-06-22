@@ -9,6 +9,7 @@ using System.Xml.Linq;
 using Bloom;
 using Bloom.Api;
 using Bloom.Book;
+using BloomHarvester.LogEntries;
 using SIL.Xml;
 
 namespace BloomHarvester
@@ -17,8 +18,8 @@ namespace BloomHarvester
 	{
 		string WriteBloomCollection(string bookFolder);
 
-		bool IsBloomReaderSuitable();
-		bool IsEpubSuitable();
+		bool IsBloomReaderSuitable(List<LogEntry> harvestLogEntries);
+		bool IsEpubSuitable(List<LogEntry> harvestLogEntries);
 
 		int GetBookComputedLevel();
 	}
@@ -163,7 +164,7 @@ namespace BloomHarvester
 		/// <summary>
 		/// For now, we assume that generated Bloom Reader books are always suitable.
 		/// </summary>
-		public bool IsBloomReaderSuitable()
+		public bool IsBloomReaderSuitable(List<LogEntry> harvestLogEntries)
 		{
 			return true;
 		}
@@ -172,25 +173,34 @@ namespace BloomHarvester
 		/// Our simplistic check for ePUB suitability is that all of the content pages
 		/// have 0 or 1 each of images, text boxes, and/or videos
 		/// </summary>
-		public bool IsEpubSuitable()
+		public bool IsEpubSuitable(List<LogEntry> harvestLogEntries)
 		{
 			int goodPages = 0;
 			foreach (var div in GetNumberedPages().ToList())
 			{
 				var imageContainers = div.SafeSelectNodes("div[contains(@class,'marginBox')]//div[contains(@class,'bloom-imageContainer')]");
 				if (imageContainers.Count > 1)
+				{
+					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple images"));
 					return false;
-
+				}
 				// Count any translation group which is not an image description
 				var translationGroups = GetTranslationGroupsFromPage(div, includeImageDescriptions: false);
 				if (translationGroups.Count > 1)
+				{
+					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple text boxes"));
 					return false;
-
+				}
 				var videos = div.SafeSelectNodes("following-sibling::div[contains(@class,'marginBox')]//video");
 				if (videos.Count > 1)
+				{
+					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple videos"));
 					return false;
+				}
 				++goodPages;
 			}
+			if (goodPages == 0)
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because there were no content pages"));
 			return goodPages > 0;
 		}
 

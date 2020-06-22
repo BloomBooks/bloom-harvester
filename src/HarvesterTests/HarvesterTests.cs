@@ -729,7 +729,7 @@ namespace BloomHarvesterTests
 				_fakeParseClient.ReceivedWithAnyArgs(2).UpdateObject("books", "FakeObjectId", "...");
 
 				// This may be too fragile to keep.  It's a pity there isn't a way to get the arguments back to check inside them instead of only exact matching...
-				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\"],\"phashOfFirstContentImage\":\"0x12345678\",\"show\":{\"social\":{\"harvester\":true},\"epub\":{\"harvester\":false},\"bloomReader\":{\"harvester\":false},\"readOnline\":{\"harvester\":false}},\"updateSource\":\"bloomHarvester\"}";
+				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\",\"Info: ArtifactSuitability - No ePUB/BloomPub because of missing font(s)\"],\"phashOfFirstContentImage\":\"0x12345678\",\"show\":{\"social\":{\"harvester\":true},\"epub\":{\"harvester\":false},\"bloomReader\":{\"harvester\":false},\"readOnline\":{\"harvester\":false}},\"updateSource\":\"bloomHarvester\"}";
 				_fakeParseClient.Received(1).UpdateObject("books", "FakeObjectId", updateJson);
 			}
 		}

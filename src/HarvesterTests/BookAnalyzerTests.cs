@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Xml.Linq;
 using BloomHarvester;
+using BloomHarvester.LogEntries;
 using NUnit.Framework;
 
 namespace BloomHarvesterTests
@@ -204,8 +205,11 @@ namespace BloomHarvesterTests
 		[Test]
 		public void IsEpubSuitable_Works()
 		{
-			Assert.That(_epubCheckAnalyzer.IsEpubSuitable(), Is.True, "Unmodified Basic Text & Picture pages should be suitable for Epub");
-			Assert.That(_epubCheckAnalyzer2.IsEpubSuitable(), Is.False, "Modified Basic Text & Picture page should not be suitable for Epub");
+			var list = new List<LogEntry>();
+			Assert.That(_epubCheckAnalyzer.IsEpubSuitable(list), Is.True, "Unmodified Basic Text & Picture pages should be suitable for Epub");
+			Assert.That(list.Count, Is.EqualTo(0), "Suitable epub should not add to the harvester log");
+			Assert.That(_epubCheckAnalyzer2.IsEpubSuitable(list), Is.False, "Modified Basic Text & Picture page should not be suitable for Epub");
+			Assert.That(list.Count, Is.EqualTo(1), "Unsuitable epub should add one entry to the harvester log");
 		}
 
 		private string GetHtmlForGetBookLevelTests(string page1Text, string page1TextOverPictureHtml)
