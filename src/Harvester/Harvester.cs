@@ -684,6 +684,8 @@ namespace BloomHarvester
 						}
 						var logEntries = new List<LogEntry>();
 						logEntries.Add(new LogEntry(LogLevel.Error, LogType.ProcessBookError, errorMessage));
+
+						// These options need to be restored before calling UpdateSuitabilityOfArtifacts
 						_options.SkipUploadBloomDigitalArtifacts = skipUploadBloomDigitalArtifacts;
 						_options.SkipUploadEPub = skipUploadEPub;
 						UpdateSuitabilityOfArtifacts(book, null, false, false, logEntries);
@@ -701,6 +703,10 @@ namespace BloomHarvester
 				// clean up after ourselves: we only need to preserve the copy in the download cache folder.
 				if (Directory.Exists(collectionBookDir))
 					Directory.Delete(collectionBookDir, true);
+
+				// Make sure to report these so that a missing font on the 1st book doesn't change the options for future books.
+				_options.SkipUploadBloomDigitalArtifacts = skipUploadBloomDigitalArtifacts;
+				_options.SkipUploadEPub = skipUploadEPub;
 			}
 
 			return isSuccessful;
