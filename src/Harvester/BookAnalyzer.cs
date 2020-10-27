@@ -36,8 +36,11 @@ namespace BloomHarvester
 	class BookAnalyzer : IBookAnalyzer
 	{
 		private HtmlDom _dom;
-		public BookAnalyzer(string html, string meta)
+		private string _bookDirectory;
+
+		public BookAnalyzer(string html, string meta, string bookDirectory = "")
 		{
+			_bookDirectory = bookDirectory;
 			_dom = new HtmlDom(XmlHtmlConverter.GetXmlDomFromHtml(html, false));
 			Language1Code = GetBestLangCode(1) ?? "";
 			Language2Code = GetBestLangCode(2) ?? "en";
@@ -76,6 +79,7 @@ namespace BloomHarvester
 					new XElement("Language1Name", new XText(GetLanguageDisplayNameOrEmpty(metaObj, Language1Code))),
 					new XElement("Language2Name", new XText(GetLanguageDisplayNameOrEmpty(metaObj, Language2Code))),
 					new XElement("Language3Name", new XText(GetLanguageDisplayNameOrEmpty(metaObj, Language3Code))),
+					new XElement("XMatterPack", new XText(GetBestXMatter())),
 					new XElement("BrandingProjectName", new XText(Branding ?? "")),
 					new XElement("PageNumberStyle", new XText(pageNumberStyle ?? "")),
 					new XElement("IsLanguage1Rtl"), new XText(isRtl.ToString().ToLowerInvariant())
@@ -140,13 +144,47 @@ namespace BloomHarvester
 			return _dom.SelectSingleNode(xpathString)?.Attributes["lang"]?.Value;
 		}
 
+		/// <summary>
+		/// Finds the XMatterName for this book. If it cannot be determined, falls back to "Device"
+		/// </summary>
+		private string GetBestXMatter()
+		{
+			string xmatterName = "Device";	// This is the default, in case anything goes wrong.
+			if (String.IsNullOrEmpty(_bookDirectory))
+			{
+				return xmatterName;
+			}
+
+			DirectoryInfo dirInfo;
+			try
+			{
+				dirInfo = new DirectoryInfo(_bookDirectory);
+			}
+			catch
+			{
+				return xmatterName;
+			}
+
+			string suffix = "-XMatter.css";
+			var files = dirInfo.GetFiles();
+			var matches = files.Where(x => x.Name.EndsWith(suffix));
+
+			if (matches.Any())
+			{
+				string xmatterFilename = matches.First().Name;
+				xmatterName = XMatterHelper.GetXMatterFromStyleSheetFileName(xmatterFilename);
+			}
+
+			return xmatterName ?? "Device";
+		}
+
 		public static BookAnalyzer FromFolder(string bookFolder)
 		{
 			var filename = Path.GetFileName(bookFolder);
 			var bookPath = Bloom.Book.BookStorage.FindBookHtmlInFolder(bookFolder);						 
 			var metaPath = Path.Combine(bookFolder, "meta.json");
 			return new BookAnalyzer(File.ReadAllText(bookPath, Encoding.UTF8),
-				File.ReadAllText(metaPath, Encoding.UTF8));
+				File.ReadAllText(metaPath, Encoding.UTF8), bookFolder);
 		}
 
 		public string WriteBloomCollection(string bookFolder)

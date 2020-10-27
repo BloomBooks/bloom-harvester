@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Xml.Linq;
 using BloomHarvester;
 using BloomHarvester.LogEntries;
+using BloomTemp;
 using NUnit.Framework;
 
 namespace BloomHarvesterTests
@@ -58,25 +60,16 @@ namespace BloomHarvesterTests
 		public void OneTimeSetUp()
 		{
 			// Insert the appropriate contentLanguageX/bloom-content*X information for the different types of books
-			string contentLanguage1Xml = "<div data-book='contentLanguage1' lang='*'>xk</div>";
-			string contentLanguage2Xml = "<div data-book='contentLanguage2' lang='*'>fr</div>";
-			string contentLanguage3Xml = "<div data-book='contentLanguage3' lang='*'>de</div>";
+			_trilingualAnalyzer = new BookAnalyzer(GetTriLingualHtml(), GetMetaData());
 
-			var contentClassForLanguage3 = "bloom-contentNational2";
+			_bilingualAnalyzer = new BookAnalyzer(GetBiLingualHtml(), GetMetaData());
 
-			string trilingualHtml = String.Format(kHtml, contentLanguage1Xml + contentLanguage2Xml + contentLanguage3Xml, contentClassForLanguage3);
-			_trilingualAnalyzer = new BookAnalyzer(trilingualHtml, GetMetaData());
-
-			var bilingualHtml = String.Format(kHtml, contentLanguage1Xml + contentLanguage2Xml, contentClassForLanguage3);
-			_bilingualAnalyzer = new BookAnalyzer(bilingualHtml, GetMetaData());
-
-			var monoLingualHtml = String.Format(kHtml, contentLanguage1Xml, contentClassForLanguage3).Replace("bloom-content2 ", "");
+			var monoLingualHtml = GetMonoLingualHtml();
 			_emptyBrandingAnalyzer = new BookAnalyzer(monoLingualHtml, GetMetaData(@"""brandingProjectName"":"""","));
 			_silleadBrandingAnalyzer = new BookAnalyzer(monoLingualHtml, GetMetaData(@"""brandingProjectName"":""SIL-LEAD"","));
 			_monolingualBookInTrilingualCollectionAnalyzer = new BookAnalyzer(monoLingualHtml, GetMetaData());
 
-			contentClassForLanguage3 = "";
-			var monoLingualBookInBilingualCollectionHtml = String.Format(kHtml, contentLanguage1Xml, contentClassForLanguage3).Replace("bloom-content2 ", "");
+			var monoLingualBookInBilingualCollectionHtml = String.Format(kHtml, kContentLanguage1Xml, "").Replace("bloom-content2 ", "");
 			_monolingualBookInBilingualCollectionAnalyzer = new BookAnalyzer(monoLingualBookInBilingualCollectionHtml, GetMetaData());
 
 			_twoLanguageCollection = XElement.Parse(_monolingualBookInBilingualCollectionAnalyzer.BloomCollection);
@@ -85,6 +78,25 @@ namespace BloomHarvesterTests
 
 			_epubCheckAnalyzer = new BookAnalyzer(kHtmlUnmodifiedPages, GetMetaData());
 			_epubCheckAnalyzer2 = new BookAnalyzer(kHtmlModifiedPage, GetMetaData());
+		}
+
+		private const string kContentClassForLanguage3 = "bloom-contentNational2";
+		private const string kContentLanguage1Xml = "<div data-book='contentLanguage1' lang='*'>xk</div>";
+		private const string kContentLanguage2Xml = "<div data-book='contentLanguage2' lang='*'>fr</div>";
+		private const string kContentLanguage3Xml = "<div data-book='contentLanguage3' lang='*'>de</div>";
+		private string GetTriLingualHtml()
+		{
+			return String.Format(kHtml, kContentLanguage1Xml + kContentLanguage2Xml + kContentLanguage3Xml, kContentClassForLanguage3);
+		}
+
+		private string GetBiLingualHtml()
+		{
+			return String.Format(kHtml, kContentLanguage1Xml + kContentLanguage2Xml, kContentClassForLanguage3);
+		}
+
+		private string GetMonoLingualHtml()
+		{
+			return String.Format(kHtml, kContentLanguage1Xml, kContentClassForLanguage3).Replace("bloom-content2 ", "");
 		}
 
 		private string GetMetaData(string brandingJson = "")
@@ -148,6 +160,39 @@ namespace BloomHarvesterTests
 		{
 			Assert.That(_monolingualBookInBilingualCollectionAnalyzer.Language3Code, Is.Empty);
 			Assert.That(_monolingualBookInTrilingualCollectionAnalyzer.Language3Code, Is.EqualTo("de"));
+		}
+
+		[TestCase("Kyrgyzstan2020-XMatter.css", "Kyrgyzstan2020")]
+		[TestCase("Device-XMatter.css", "Device")]
+		public void GetBestXMatter_DirectoryHasXMatterCSS_PopulatesCollectionXMatterSetting(string filename, string expectedXMatterName)
+		{
+			using (var tempFolder = new TemporaryFolder("BookAnalyzerTests"))
+			{
+				var filePath = Path.Combine(tempFolder.FolderPath, filename);
+				using (File.Create(filePath))	// TemporaryFolder takes a long time to dispose if you don't dispose this first.
+				{
+					// System under test
+					var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData(), tempFolder.FolderPath);
+
+					// Verification
+					string expected = $"<XMatterPack>{expectedXMatterName}</XMatterPack>";
+					Assert.That(analyzer.BloomCollection.Contains(expected), Is.True, "BloomCollection did not contain expected XMatter Pack. XML: " + analyzer.BloomCollection);
+				}
+			}
+		}
+
+		[TestCase]
+		public void GetBestXMatter_DirectoryMissingXMatterCSS_PopulatesWithDefault()
+		{
+			using (var tempFolder = new TemporaryFolder("BookAnalyzerTests"))
+			{
+				// System under test
+				var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData(), tempFolder.FolderPath);
+
+				// Verification
+				string expectedDefault = $"<XMatterPack>Device</XMatterPack>";
+				Assert.That(analyzer.BloomCollection.Contains(expectedDefault), Is.True, "BloomCollection did not contain default XMatter Pack. XML: " + analyzer.BloomCollection);
+			}
 		}
 
 		[Test]
