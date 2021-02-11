@@ -369,7 +369,7 @@ namespace BloomHarvesterTests
 			{
 				var result = harvester.GetQueryWhereOptimizations();
 				Assert.AreEqual(2, result.Count);
-				Assert.AreEqual("\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\"]}", result[0]);
+				Assert.AreEqual("\"harvestState\" : { \"$in\": [\"New\", \"Updated\", \"Unknown\", \"Requested\"]}", result[0]);
 				Assert.AreEqual("\"$or\":[{\"inCirculation\":true},{\"inCirculation\":{\"$exists\":false}}]", result[1]);
 			}
 		}
@@ -539,6 +539,7 @@ namespace BloomHarvesterTests
 		[TestCase(HarvestState.Updated)]
 		[TestCase(HarvestState.Unknown)]
 		[TestCase(HarvestState.FailedIndefinitely)]
+		[TestCase(HarvestState.Requested)]
 		public void ProcessOneBook_HarvesterException_ProcessBookErrorRecorded(HarvestState initialState)
 		{
 			var options = GetHarvesterOptionsForProcessOneBookTests();
