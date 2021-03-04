@@ -31,13 +31,18 @@ namespace BloomHarvester.Parse.Model
 		/// <summary>
 		/// A constructor that allows setting readonly fields
 		/// </summary>
-		internal BookModel(string baseUrl, string title, bool isInCirculation = true, ParseDate lastUploaded = null)
+		internal BookModel(string baseUrl, string title, bool isInCirculation = true, ParseDate lastUploaded = null, string userId = null)
 		{
 			this.BaseUrl = baseUrl;
 			this.Title = title;
 			this.IsInCirculation = isInCirculation;
 			this.LastUploaded = lastUploaded;
-
+			// The Uploader.ObjectId is needed for unit tests.
+			if (userId != null)
+			{
+				this.Uploader = new User(); // needed for Unit tests.
+				this.Uploader.ObjectId = userId;
+			}
 			// Enhance: add more readonly fields as needed
 		}
 
