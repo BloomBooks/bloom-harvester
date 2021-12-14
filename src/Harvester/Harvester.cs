@@ -185,7 +185,9 @@ namespace BloomHarvester
 
 			var logEnvironment = EnvironmentUtils.GetEnvOrFallback(options.LogEnvironment, options.Environment);
 
-			string identifier = $"{Environment.MachineName}-{parseDBEnvironment.ToString()}";
+			// Environment.MachineName can make the path too long for some files.
+			//string identifier = $"{Environment.MachineName}-{parseDBEnvironment.ToString()}";
+			string identifier = parseDBEnvironment.ToString();
 			IMonitorLogger logger = options.SuppressLogs ? new ConsoleLogger() : (IMonitorLogger)new AzureMonitorLogger(logEnvironment, identifier);
 
 			var parseClient = new ParseClient(parseDBEnvironment, logger);
