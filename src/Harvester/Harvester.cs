@@ -885,7 +885,7 @@ namespace BloomHarvester
 			if (anyFontsMissing)
 				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "No ePUB/BloomPub because of missing font(s)"));
 			else if (!isSuccessful)
-				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub because CreateArtifacts failed."));
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub/.bloom because CreateArtifacts failed."));
 
 			if (!_options.SkipUploadEPub || anyFontsMissing)
 			{
@@ -897,6 +897,11 @@ namespace BloomHarvester
 				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable(harvestLogEntries);
 				book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
 				book.SetHarvesterEvaluation("readOnline", isBloomReaderGood);
+			}
+
+			if (!_options.SkipUploadDotBloom)
+			{
+				book.SetHarvesterEvaluation("dotBloom", isSuccessful);
 			}
 
 			// harvester never makes pdfs at the moment.
@@ -1184,6 +1189,7 @@ namespace BloomHarvester
 
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomd");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
+					string dotBloomOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloom");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
@@ -1196,6 +1202,11 @@ namespace BloomHarvester
 					if (!_options.SkipUploadEPub)
 					{
 						bloomArguments += $" \"--epubOutputPath={epubOutputPath}\"";
+					}
+
+					if (!_options.SkipUploadDotBloom)
+					{
+						bloomArguments += $" \"--dotBloomOutputPath={dotBloomOutputPath}\"";
 					}
 
 					if (!_options.SkipUploadThumbnails)
@@ -1277,6 +1288,11 @@ namespace BloomHarvester
 								harvestLogEntries.Add(new LogEntry(LogLevel.Warn, LogType.ArtifactSuitability, "Missing ePUB artifact: likely a comic book"));
 								_ePubExists = false;
 							}
+						}
+
+						if (!_options.SkipUploadDotBloom)
+						{
+							UploadDotBloomArtifact(dotBloomOutputPath, s3FolderLocation);
 						}
 
 						if (!_options.SkipUploadThumbnails)
@@ -1385,6 +1401,19 @@ namespace BloomHarvester
 			string folderToUploadTo = $"{s3FolderLocation}/epub";
 			_s3UploadClient.DeleteDirectory(folderToUploadTo);
 			_s3UploadClient.UploadFile(epubPath, folderToUploadTo, "no-cache");
+		}
+
+		/// <summary>
+		/// Uploads a .bloom file to S3
+		/// </summary>
+		/// <param name="dotBloomOutputPath">The current location of the .bloom file on this machine</param>
+		/// <param name="s3FolderLocation">The S3 path to upload to</param>
+		private void UploadDotBloomArtifact(string dotBloomOutputPath, string s3FolderLocation)
+		{
+			_logger.TrackEvent("Upload .bloom");
+			string folderToUploadTo = $"{s3FolderLocation}/dotBloom";
+			_s3UploadClient.DeleteDirectory(folderToUploadTo);
+			_s3UploadClient.UploadFile(dotBloomOutputPath, folderToUploadTo, "no-cache");
 		}
 
 		/// <summary>
