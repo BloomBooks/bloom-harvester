@@ -116,7 +116,7 @@ namespace BloomHarvester
 		[Option("queryWhere", Required = false, Default = "", HelpText = "If specified, adds a WHERE clause to the request query when retrieving the list of books to process. This should be in the JSON format used by Parse REST API to pass WHERE clauses. See https://docs.parseplatform.org/rest/guide/#query-constraints")]
 		public string QueryWhere { get; set; }
 
-		[Option("readOnly", Required = false, Default = false, HelpText = "If specified, harvester just downloads the books")]
+		[Option("readOnly", Required = false, Default = false, HelpText = "If specified, harvester just downloads the books.")]
 		public bool ReadOnly { get; set; }
 
 		[Option("count", Required = false, Default = -1, HelpText = "The amount of records to process. Default -1. If specified to a positive value, then processing will end after processing the specified number of books.")]
@@ -125,7 +125,7 @@ namespace BloomHarvester
 		[Option("loop", Required = false, Default = false, HelpText = "If true, will keep re-running Harvester after it finishes.")]
 		public bool Loop { get; set; }
 
-		[Option("loopWaitSeconds", Required = false, Default = 300, HelpText = "If specified, and loop mode is on, then specifies the number of seconds to wait between loop iterations if nothing was previously processed")]
+		[Option("loopWaitSeconds", Required = false, Default = 300, HelpText = "If specified, and loop mode is on, then specifies the number of seconds to wait between loop iterations if nothing was previously processed.")]
 		public int LoopWaitSeconds { get; set; }
 
 		[Option("forceDownload", Required = false, Default = false,  HelpText = "If true, will force the re-downloading of a book, even if it already exists.")]
@@ -136,6 +136,9 @@ namespace BloomHarvester
 
 		[Option("skipUploadBloomDigitalArtifacts", Required = false, Default = false, HelpText = "If true, will prevent the .bloomd and Bloom Digital (Read on Bloom Library) artifacts from being uploaded.")]
 		public bool SkipUploadBloomDigitalArtifacts { get; set; }
+
+		[Option("skipUploadBloomSource", Required = false, Default = false, HelpText = "If true, will prevent the .bloom artifact from being created and uploaded.")]
+		public bool SkipUploadBloomSource { get; set; }
 
 		[Option("skipUploadEPub", Required = false, Default = false, HelpText = "If true, will prevent the .epub artifact from being uploaded.")]
 		public bool SkipUploadEPub { get; set; }
@@ -159,7 +162,8 @@ namespace BloomHarvester
 				$"queryWhere: {QueryWhere}\n" +
 				$"count: {Count}\n" +
 				$"skipUploadBloomDigitalArtifacts: {SkipUploadBloomDigitalArtifacts}\n" +
-				$"skipUploadEPub: {SkipUploadEPub}";
+				$"skipUploadEPub: {SkipUploadEPub}" +
+				$"skipUploadBloomSource: {SkipUploadBloomSource}";
 		}
 
 		public void ValidateOptions()
