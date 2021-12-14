@@ -205,6 +205,12 @@ namespace BloomHarvester
 					else
 						Model.Show.bloomReader.harvester = enabled;
 					break;
+				case "bloomSource":
+					if (Model.Show.bloomSource == null)
+						Model.Show.bloomSource = setting;
+					else
+						Model.Show.bloomSource.harvester = enabled;
+					break;
 				case "readOnline":
 					if (Model.Show.readOnline == null)
 						Model.Show.readOnline = setting;
