@@ -28,6 +28,8 @@ namespace BloomHarvester
 
 		string GetBestPHashImageSource();
 		ulong ComputeImageHash(string path);
+
+		string GetBookshelf();
 	}
 
 	/// <summary>
@@ -37,6 +39,7 @@ namespace BloomHarvester
 	{
 		private HtmlDom _dom;
 		private string _bookDirectory;
+		private string _bookshelf;
 
 		public BookAnalyzer(string html, string meta, string bookDirectory = "")
 		{
@@ -59,7 +62,7 @@ namespace BloomHarvester
 				this.Branding = "Default";
 			}
 
-			var bookshelf = GetBookshelfIfPossible(_dom, metaObj);
+			_bookshelf = GetBookshelfIfPossible(_dom, metaObj);
 
 			var signLanguageCode = GetSignLanguageCode(metaObj);
 
@@ -86,7 +89,7 @@ namespace BloomHarvester
 					new XElement("Language3Name", new XText(GetLanguageDisplayNameOrEmpty(metaObj, Language3Code))),
 					new XElement("XMatterPack", new XText(GetBestXMatter())),
 					new XElement("BrandingProjectName", new XText(Branding ?? "")),
-					new XElement("DefaultBookTags", new XText(bookshelf)),
+					new XElement("DefaultBookTags", new XText(_bookshelf)),
 					new XElement("PageNumberStyle", new XText(pageNumberStyle ?? "")),
 					new XElement("IsLanguage1Rtl"), new XText(isRtl.ToString().ToLowerInvariant())
 					);
@@ -116,6 +119,11 @@ namespace BloomHarvester
 				}
 			}
 			return String.Empty;
+		}
+
+		public string GetBookshelf()
+		{
+			return _bookshelf;
 		}
 
 		// The only trace in the book that it belongs to a collection with a sign language is that

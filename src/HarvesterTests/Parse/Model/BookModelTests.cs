@@ -127,5 +127,67 @@ namespace BloomHarvesterTests.Parse.Model
 			Assert.That(url, Is.Null);
 		}
 		#endregion
+
+		#region UpdateTagsForBookshelf
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_IgnoresEmptyWhenNoBookshelf()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("");
+			Assert.That(changed, Is.False, "UpdateTagsForBookshelf should have returned false");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1" }, bookModel.Tags, "Tags should contain only computedLevel:1");
+		}
+
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_RemovesBookshelfWhenEmptyNewValue()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1", "bookshelf:Removed" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("");
+			Assert.That(changed, Is.True, "UpdateTagsForBookshelf should have returned true");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1" }, bookModel.Tags, "Tags should contain only computedLevel:1");
+		}
+
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_AddsBookshelfWhenNoneExisted()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("bookshelf:Added");
+			Assert.That(changed, Is.True, "UpdateTagsForBookshelf should have returned true");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1", "bookshelf:Added" }, bookModel.Tags, "Tags should contain bookshelf:Added");
+		}
+
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_ReplacesBookshelfWhenOneExists()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1", "bookshelf:Replaced" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("bookshelf:Replacement");
+			Assert.That(changed, Is.True, "UpdateTagsForBookshelf should have returned true");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1", "bookshelf:Replacement" }, bookModel.Tags, "bookshelf: tags should be only bookshelf:Replacement");
+		}
+
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_ReplacesBookshelvesWhenTwoExist()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1", "bookshelf:First Replaced", "bookshelf:Second Replaced" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("bookshelf:Replacement");
+			Assert.That(changed, Is.True, "UpdateTagsForBookshelf should have returned true");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1", "bookshelf:Replacement" }, bookModel.Tags, "bookshelf: tags should be only bookshelf:Replacement");
+		}
+
+		[Test]
+		public void BookModel_UpdateTagsForBookshelf_RetainsSameBookshelfWhenItAlreadyExists()
+		{
+			var bookModel = new BookModel() { Tags = new string[] { "computedLevel:1", "bookshelf:Retain" } };
+
+			var changed = bookModel.UpdateTagsForBookshelf("bookshelf:Retain");
+			Assert.That(changed, Is.False, "UpdateTagsForBookshelf should have returned true");
+			CollectionAssert.AreEquivalent(new string[] { "computedLevel:1", "bookshelf:Retain" }, bookModel.Tags, "bookshelf: tags should still be one bookshelf:Retain");
+		}
+#endregion
 	}
 }
