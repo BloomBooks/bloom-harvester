@@ -10,6 +10,7 @@ namespace BloomHarvester.LogEntries
 		MissingBaseUrl,
 		MissingBloomDigitalIndex,
 		MissingFont,
+		InvalidFont,
 		PHashError,
 		ProcessBookError,
 		TimeoutError

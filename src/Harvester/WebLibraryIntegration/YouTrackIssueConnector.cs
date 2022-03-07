@@ -14,6 +14,7 @@ namespace BloomHarvester.WebLibraryIntegration
 		void ReportException(Exception exception, string additionalDescription, BookModel bookModel, bool exitImmediately = true);
 		void ReportError(string errorSummary, string errorDescription, string errorDetails, BookModel bookModel = null);
 		void ReportMissingFont(string missingFontName, string harvesterId, BookModel bookModel = null);
+		void ReportInvalidFont(string invalidFontName, string harvesterId, BookModel bookModel = null);
 	}
 
 	internal class YouTrackIssueConnector : IIssueReporter
@@ -23,10 +24,12 @@ namespace BloomHarvester.WebLibraryIntegration
 			this.EnvironmentSetting = environment;
 			_youTrackProjectKeyErrors = projectKey;
 			_youTrackProjectKeyMissingFonts = projectKey;
+			_youTrackProjectKeyInvalidFonts = projectKey;
 		}
 
 		private readonly string _youTrackProjectKeyErrors = "BH";  // Or "SB" for Sandbox
 		private readonly string _youTrackProjectKeyMissingFonts = "BH";  // Or "SB" for Sandbox
+		private readonly string _youTrackProjectKeyInvalidFonts = "BH";  // Or "SB" for Sandbox
 
 		public EnvironmentSetting EnvironmentSetting { get; set; }
 
@@ -180,6 +183,16 @@ namespace BloomHarvester.WebLibraryIntegration
 			description += GetDiagnosticInfo(bookModel, this.EnvironmentSetting);
 
 			ReportToYouTrack(_youTrackProjectKeyMissingFonts, summary, description, exitImmediately: false, bookModel: bookModel);
+		}
+
+		public void ReportInvalidFont(string invalidFontName, string harvesterId, BookModel bookModel = null)
+		{
+			string summary = $"[BH] [{this.EnvironmentSetting}]{FixTitleForSummary(bookModel)} Invalid Font: \"{invalidFontName}\"";
+
+			string description = $"Invalid font \"{invalidFontName}\" on machine \"{harvesterId}\".\n\n";
+			description += GetDiagnosticInfo(bookModel, this.EnvironmentSetting);
+
+			ReportToYouTrack(_youTrackProjectKeyInvalidFonts, summary, description, exitImmediately: false, bookModel: bookModel);
 		}
 
 		private static string GetDiagnosticInfo(BookModel bookModel, EnvironmentSetting environment)

@@ -10,6 +10,7 @@ namespace BloomHarvester
 	interface IFontChecker
 	{
 		List<string> GetMissingFonts(string bookPath, out bool success);
+		List<string> GetInvalidFonts();
 	}
 
 	internal class FontChecker : IFontChecker
@@ -17,6 +18,7 @@ namespace BloomHarvester
 		private readonly int _kGetFontsTimeoutSecs;
 		private IBloomCliInvoker _bloomCli;
 		private IMonitorLogger _logger;
+		private List<string> _invalidFonts;
 
 		public FontChecker(int getFontsTimeoutSecs, IBloomCliInvoker bloomCli, IMonitorLogger logger)
 		{
@@ -46,15 +48,40 @@ namespace BloomHarvester
 					_logger.LogVerbose("Standard error:\n" + stdError);
 
 					success = false;
+					_invalidFonts = new List<string>();
 					return missingFonts;
 				}
 
 				var bookFontNames = GetFontsFromReportFile(reportFile.Path);
 				missingFonts = GetMissingFonts(bookFontNames);
+				GetInvalidFonts(bookFontNames);
 			}
 
 			success = true;
 			return missingFonts;
+		}
+
+		public List<string> GetInvalidFonts()
+		{
+			return _invalidFonts;
+		}
+
+		private void GetInvalidFonts(List<string> bookFontNames)
+		{
+			_invalidFonts = new List<string>();
+			foreach (var font in bookFontNames)
+			{
+				var fontFileFinder = Bloom.FontProcessing.FontFileFinder.GetInstance(false);
+				var fontFiles = fontFileFinder.GetFilesForFont(font);
+				foreach (var file in fontFiles)
+				{
+					if (!Bloom.FontProcessing.FontMetadata.fontFileTypesBloomKnows.Contains(Path.GetExtension(file).ToLowerInvariant()))
+					{
+						_invalidFonts.Add(font);
+						break;
+					}
+				}
+			}
 		}
 
 		internal static List<string> GetMissingFonts(IEnumerable<string> bookFontNames)

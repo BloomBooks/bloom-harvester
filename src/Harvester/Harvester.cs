@@ -34,6 +34,7 @@ namespace BloomHarvester
 		private DateTime _initTime;	// Used to provide a unique folder name for each Harvester instance
 		private HashSet<string> _cumulativeFailedBookIdSet = new HashSet<string>();
 		private HashSet<string> _missingFonts = new HashSet<string>();
+		private HashSet<string> _invalidFonts = new HashSet<string>();
 		internal Version Version;
 		private Random _rng = new Random();
 
@@ -610,10 +611,10 @@ namespace BloomHarvester
 				collectionBookDir = DownloadBookAndCopyToCollectionFolder(book, decodedUrl, originalBookModel);
 
 				// Process the book
-				List<LogEntry> harvestLogEntries = CheckForMissingFontErrors(collectionBookDir, book);
-				bool anyFontsMissing = harvestLogEntries.Any();
-				isSuccessful &= !anyFontsMissing;
-				if (anyFontsMissing)
+				List<LogEntry> harvestLogEntries = CheckForMissingOrInvalidFontErrors(collectionBookDir, book);
+				bool anyFontErrors = harvestLogEntries.Any();
+				isSuccessful &= !anyFontErrors;
+				if (anyFontErrors)
 				{
 					_options.SkipUploadBloomDigitalArtifacts = true;
 					_options.SkipUploadEPub = true;
@@ -638,7 +639,7 @@ namespace BloomHarvester
 					isSuccessful &= CreateArtifacts(decodedUrl, collectionBookDir, collectionFilePath, book,
 						harvestLogEntries);
 					// If not successful, update artifact suitability to say all false. (BL-8413)
-					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontsMissing, harvestLogEntries);
+					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontErrors, harvestLogEntries);
 
 					book.SetTags();
 				}
@@ -882,20 +883,20 @@ namespace BloomHarvester
 		/// are marked true or false for showing only if we tried to make them (ie, didn't skip them).  If we skipped one or both
 		/// of them, the previous evaluation is left alone for whatever was skipped.
 		/// </summary>
-		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful, bool anyFontsMissing,
+		private void UpdateSuitabilityOfArtifacts(Book book, IBookAnalyzer analyzer, bool isSuccessful, bool anyFontErrors,
 			List<LogEntry> harvestLogEntries)
 		{
-			if (anyFontsMissing)
-				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "No ePUB/BloomPub because of missing font(s)"));
+			if (anyFontErrors)
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "No ePUB/BloomPub because of missing or invalid font(s)"));
 			else if (!isSuccessful)
 				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub/bloomSource because CreateArtifacts failed."));
 
-			if (!_options.SkipUploadEPub || anyFontsMissing)
+			if (!_options.SkipUploadEPub || anyFontErrors)
 			{
 				book.SetHarvesterEvaluation("epub", isSuccessful && _ePubExists && analyzer.IsEpubSuitable(harvestLogEntries));
 			}
 
-			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontsMissing)
+			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontErrors)
 			{
 				var isBloomReaderGood = isSuccessful && analyzer.IsBloomReaderSuitable(harvestLogEntries);
 				book.SetHarvesterEvaluation("bloomReader", isBloomReaderGood);
@@ -1148,11 +1149,12 @@ namespace BloomHarvester
 		}
 
 		// Returns list of log entries for missing fonts
-		internal List<LogEntry> CheckForMissingFontErrors(string bookPath, Book book)
+		internal List<LogEntry> CheckForMissingOrInvalidFontErrors(string bookPath, Book book)
 		{
 			var harvestLogEntries = new List<LogEntry>();
 
 			var missingFontsForCurrBook = _fontChecker.GetMissingFonts(bookPath, out bool success);
+			var invalidFontsForCurrBook = _fontChecker.GetInvalidFonts();
 
 			if (!success)
 			{
@@ -1183,6 +1185,27 @@ namespace BloomHarvester
 					{
 						// We already know that this font is missing, which means we already reported an issue to YouTrack. No need to re-report it.
 						Console.Out.WriteLine("Missing font, but no issue created because already known: " + missingFont);
+					}
+				}
+			}
+			var areAnyFontsInvalid = invalidFontsForCurrBook.Any();
+			if (areAnyFontsInvalid)
+			{
+				_logger.LogWarn("Invalid fonts: " + String.Join(",", invalidFontsForCurrBook));
+
+				foreach (var invalidFont in invalidFontsForCurrBook)
+				{
+					var logEntry = new LogEntry(LogLevel.Error, LogType.InvalidFont, message: invalidFont);
+					harvestLogEntries.Add(logEntry);
+					if (!_invalidFonts.Contains(invalidFont))
+					{
+						_issueReporter.ReportInvalidFont(invalidFont, this.Identifier, book.Model);
+						_invalidFonts.Add(invalidFont);
+					}
+					else
+					{
+						// We already know that this font is invalid, which means we already reported an issue to YouTrack. No need to re-report it.
+						Console.Out.WriteLine("Invalid font, but no issue created because already known: " + invalidFont);
 					}
 				}
 			}
