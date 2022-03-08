@@ -1231,7 +1231,7 @@ namespace BloomHarvester
 					var bookTitleFileBasename = components.BookTitle;	// derived from BaseUrl, does not need any sanitizing (BL-10406)
 					var baseForUnzipped = Path.Combine(folderForUnzipped.FolderPath, bookTitleFileBasename);
 
-					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomd");
+					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloompub");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
 					string bloomSourceOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomSource");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
@@ -1239,7 +1239,7 @@ namespace BloomHarvester
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
 					if (!_options.SkipUploadBloomDigitalArtifacts || !_options.SkipUpdateMetadata)
 					{
-						// Note: We need bloomDigitalOutputPath if we update metadata too, because making the bloomd is what generates our updated meta.json
+						// Note: We need bloomDigitalOutputPath if we update metadata too, because making the .bloompub is what generates our updated meta.json
 						bloomArguments += $" \"--bloomdOutputPath={zippedBloomDOutputPath}\" \"--bloomDigitalOutputPath={baseForUnzipped}\"";
 					}
 
@@ -1332,6 +1332,7 @@ namespace BloomHarvester
 						if (!_options.SkipUploadBloomDigitalArtifacts)
 						{
 							UploadBloomDigitalArtifacts(zippedBloomDOutputPath, baseForUnzipped, s3FolderLocation);
+							book.BloomPubVersion = 1;
 						}
 
 						if (!_options.SkipUploadEPub)
@@ -1430,15 +1431,15 @@ namespace BloomHarvester
 		}
 
 		/// <summary>
-		/// Uploads the .bloomd and the bloomdigital folders to S3
+		/// Uploads the .bloompub and the bloomdigital folders to S3
 		/// </summary>
-		/// <param name="zippedBloomDPath">The .bloomd file (zipped) path on this machine</param>
+		/// <param name="bloomPubPath">The .bloompub file (zipped) path on this machine</param>
 		/// <param name="unzippedFolderPath">The bloomdigital folder (unzipped) path on this machine</param>
 		/// <param name="s3FolderLocation">The S3 path to upload to</param>
-		private void UploadBloomDigitalArtifacts(string zippedBloomDPath, string unzippedFolderPath, string s3FolderLocation)
+		private void UploadBloomDigitalArtifacts(string bloomPubPath, string unzippedFolderPath, string s3FolderLocation)
 		{
-			_logger.TrackEvent("Upload .bloomd");
-			_s3UploadClient.UploadFile(zippedBloomDPath, s3FolderLocation, "no-cache");
+			_logger.TrackEvent("Upload .bloompub");
+			_s3UploadClient.UploadFile(bloomPubPath, s3FolderLocation, "no-cache");
 
 			_logger.TrackEvent("Upload bloomdigital directory");
 			// Clear out the directory first to make sure stale artifacts get removed.
@@ -1447,7 +1448,7 @@ namespace BloomHarvester
 			_s3UploadClient.UploadDirectory(unzippedFolderPath, folderToUploadTo);
 		}
 
-		// This function doesn't wrap much, but I made so that when studying the stack trace of exceptions, we could distinguish errors uploading .bloomd vs .epub files.
+		// This function doesn't wrap much, but I made so that when studying the stack trace of exceptions, we could distinguish errors uploading .bloompub vs .epub files.
 		/// <summary>
 		/// Uploads an EPub to S3
 		/// </summary>

@@ -26,6 +26,8 @@ namespace BloomHarvester
 		}
 
 		internal BookModel Model { get; set; }
+		internal int BloomPubVersion;
+
 		protected IMonitorLogger _logger;
 		protected readonly IFileIO _fileIO;
 
@@ -276,6 +278,9 @@ namespace BloomHarvester
 			{
 				Model.BrandingProjectName = metaData.BrandingProjectName;
 			}
+
+			if (BloomPubVersion > 0)
+				Model.BloomPUBVersion = BloomPubVersion;
 		}
 	}
 }

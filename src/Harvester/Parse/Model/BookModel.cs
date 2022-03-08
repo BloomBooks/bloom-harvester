@@ -55,7 +55,8 @@ namespace BloomHarvester.Parse.Model
 				"Tags",
 				"Show",
 				"BrandingProjectName",
-				"PHashOfFirstContentImage"
+				"PHashOfFirstContentImage",
+				"BloomPUBVersion"
 			});
 		}
 
@@ -153,6 +154,9 @@ namespace BloomHarvester.Parse.Model
 
 		[JsonProperty("uploader")]
 		public readonly User Uploader;
+
+		[JsonProperty("bloomPUBVersion")]
+		public int? BloomPUBVersion { get; set; }
 		#endregion
 
 		public static List<string> GetParseKeys()

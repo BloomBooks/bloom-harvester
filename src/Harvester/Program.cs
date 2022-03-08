@@ -134,7 +134,7 @@ namespace BloomHarvester
 		[Option("skipDownload", Required = false, Default = false, HelpText = "If true, will skip downloading the book but ONLY if it already exists.")]
 		public bool SkipDownload { get; set; }
 
-		[Option("skipUploadBloomDigitalArtifacts", Required = false, Default = false, HelpText = "If true, will prevent the .bloomd and Bloom Digital (Read on Bloom Library) artifacts from being uploaded.")]
+		[Option("skipUploadBloomDigitalArtifacts", Required = false, Default = false, HelpText = "If true, will prevent the .bloompub and Bloom Digital (Read on Bloom Library) artifacts from being uploaded.")]
 		public bool SkipUploadBloomDigitalArtifacts { get; set; }
 
 		[Option("skipUploadBloomSource", Required = false, Default = false, HelpText = "If true, will prevent the .bloomSource artifact from being created and uploaded.")]
