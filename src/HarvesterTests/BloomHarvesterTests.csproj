@@ -15,7 +15,8 @@
     <PackageReference Include="NSubstitute" Version="4.2.1" />
     <PackageReference Include="NUnit" Version="3.12.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
-    <PackageReference Include="SIL.Core" Version="10.0.0-beta0063" />
+    <PackageReference Include="SIL.Core" Version="10.0.0-beta0081" />
+    <PackageReference Include="Mono.Unix" version="7.1.0-final.1.21458.1" />
   </ItemGroup>
 
   <ItemGroup>
