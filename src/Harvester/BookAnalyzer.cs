@@ -491,7 +491,7 @@ namespace BloomHarvester
 		private static string GetTranslationGroupsXpath(bool includeImageDescriptions)
 		{
 			string imageDescFilter = includeImageDescriptions ? "" : " and not(contains(@class,'bloom-imageDescription'))";
-			string xPath = $"div[contains(@class,'marginBox')]//div[contains(@class,'bloom-translationGroup'){imageDescFilter}]";
+			string xPath = $"div[contains(@class,'marginBox')]//div[contains(@class,'bloom-translationGroup') and not(contains(@class, 'box-header-off')){imageDescFilter}]";
 			return xPath;
 		}
 

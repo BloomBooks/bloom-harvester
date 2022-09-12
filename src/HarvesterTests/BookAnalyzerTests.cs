@@ -592,6 +592,9 @@ $@"<html>
           <div class='split-pane-divider horizontal-divider' style='bottom: 50%' />
           <div class='split-pane-component position-bottom' style='height: 50%'>
             <div class='split-pane-component-inner'>
+			  <!-- This vestigial box-header-off group needs to be ignored when counting groups on a page -->
+              <div class='box-header-off bloom-translationGroup'>
+              </div>
               <div class='bloom-translationGroup bloom-trailingElement' data-default-languages='auto'>
               </div>
             </div>
