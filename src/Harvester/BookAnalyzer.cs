@@ -41,6 +41,8 @@ namespace BloomHarvester
 		private readonly HtmlDom _dom;
 		private readonly string _bookDirectory;
 		private readonly string _bookshelf;
+		private readonly float _bloomVersion = 0.0F;
+		private readonly dynamic _publishSettings;
 
 		public BookAnalyzer(string html, string meta, string bookDirectory = "")
 		{
@@ -103,6 +105,70 @@ namespace BloomHarvester
 			{
 				var license = metaObj["license"] as string;
 				BookHasCustomLicense = license == "custom";
+			}
+			// Extract the Bloom version from the node that looks like
+			// <meta name="Generator" content="Bloom Version 5.0.0 (apparent build date: 01-Feb-2021)" />
+			// This is the most recent version to edit the book, and the version that uploaded it.
+			_bloomVersion = -1.0F;
+			var generatorNode = _dom.RawDom.SelectSingleNode("//head/meta[@name='Generator']") as XmlElement;
+			if (generatorNode != null)
+			{
+				var generatorContent = generatorNode.GetAttribute("content");
+				if (!String.IsNullOrEmpty(generatorContent))
+				{
+					var version = Regex.Match(generatorContent, "^Bloom Version ([0-9]+\\.[0-9]+)");
+					if (version.Success && version.Groups.Count == 2)
+						float.TryParse(version.Groups[1].Value, out _bloomVersion);
+				}
+			}
+			_publishSettings = null;
+			var settingsPath = Path.Combine(_bookDirectory,"publish-settings.json");
+			var needSave = false;
+			if (SIL.IO.RobustFile.Exists(settingsPath))
+			{
+				// Note that Harvester runs a recent (>= 5.4) version of Bloom which defaults to "fixed"
+				// if epub.mode has not been set in the publish-settings.json file.  The behavior before
+				// version 5.4 was what is now called "flowable" and we want to preserve that for uploaders
+				// using the older versions of Bloom since that is what they'll see in ePUBs they create.
+				try
+				{
+					var settingsRawText = SIL.IO.RobustFile.ReadAllText(settingsPath);
+					_publishSettings = DynamicJson.Parse(settingsRawText, Encoding.UTF8) as DynamicJson;
+					if (_bloomVersion < 5.4F)
+					{
+						if (!_publishSettings.IsDefined("epub"))
+						{
+							_publishSettings.epub = DynamicJson.Parse("{\"mode\":\"flowable\"}");
+							needSave = true;
+						}
+						else if (!_publishSettings.epub.IsDefined("mode"))
+						{
+							_publishSettings.epub.mode = "flowable";	// traditional behavior
+							needSave = true;
+						}
+						if (_publishSettings.epub.mode == "fixed")
+						{
+							// Debug.Assert doesn't allow a dynamic argument to be used.
+							System.Diagnostics.Debug.Assert(false, "_publishSettings.epub.mode == \"flowable\" should not happen!");
+						}
+					}
+				}
+				catch
+				{
+					// Ignore exceptions reading or parsing the publish-settings.json file.
+					_publishSettings = null;
+				}
+			}
+			if (_publishSettings == null && _bloomVersion < 5.4F)
+			{
+				_publishSettings = DynamicJson.Parse("{\"epub\":{\"mode\":\"flowable\"}}");
+				needSave = true;
+			}
+			if (needSave)
+			{
+				// We've set the epub.mode to flowable, so we need to let Bloom know about it when we
+				// create the artifacts.  (This is written to a temporary folder.)
+				SIL.IO.RobustFile.WriteAllText(settingsPath, DynamicJson.Serialize(_publishSettings));
 			}
 		}
 
@@ -306,6 +372,20 @@ namespace BloomHarvester
 		public bool IsEpubSuitable(List<LogEntry> harvestLogEntries)
 		{
 			int goodPages = 0;
+			var mode = "";
+			try
+			{
+				mode = _publishSettings?.epub?.mode;
+			}
+			catch (Exception e)
+			{
+				mode = "flowable";
+			}
+			// Bloom 5.4 sets a default value of "fixed" unless the user changes it.
+			// Previous versions of Bloom should not even have a value for this setting,
+			// but we set it to "flowable" earlier to preserve old behavior.
+			if (mode == "fixed" && _bloomVersion >= 5.4)
+				return true;
 			foreach (var div in GetNumberedPages().ToList())
 			{
 				var imageContainers = div.SafeSelectNodes("div[contains(@class,'marginBox')]//div[contains(@class,'bloom-imageContainer')]");
