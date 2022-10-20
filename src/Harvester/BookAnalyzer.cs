@@ -41,7 +41,8 @@ namespace BloomHarvester
 		private readonly HtmlDom _dom;
 		private readonly string _bookDirectory;
 		private readonly string _bookshelf;
-		private readonly float _bloomVersion = 0.0F;
+		private readonly Version _bloomVersion;
+		private readonly Version _version5_4 = new Version(5,4);
 		private readonly dynamic _publishSettings;
 
 		public BookAnalyzer(string html, string meta, string bookDirectory = "")
@@ -106,21 +107,9 @@ namespace BloomHarvester
 				var license = metaObj["license"] as string;
 				BookHasCustomLicense = license == "custom";
 			}
-			// Extract the Bloom version from the node that looks like
-			// <meta name="Generator" content="Bloom Version 5.0.0 (apparent build date: 01-Feb-2021)" />
-			// This is the most recent version to edit the book, and the version that uploaded it.
-			_bloomVersion = -1.0F;
+			// Extract the Bloom version that created/uploaded the book.
+			_bloomVersion = _dom.GetGeneratorVersion();
 			var generatorNode = _dom.RawDom.SelectSingleNode("//head/meta[@name='Generator']") as XmlElement;
-			if (generatorNode != null)
-			{
-				var generatorContent = generatorNode.GetAttribute("content");
-				if (!String.IsNullOrEmpty(generatorContent))
-				{
-					var version = Regex.Match(generatorContent, "^Bloom Version ([0-9]+\\.[0-9]+)");
-					if (version.Success && version.Groups.Count == 2)
-						float.TryParse(version.Groups[1].Value, out _bloomVersion);
-				}
-			}
 			_publishSettings = null;
 			var settingsPath = Path.Combine(_bookDirectory,"publish-settings.json");
 			var needSave = false;
@@ -134,7 +123,7 @@ namespace BloomHarvester
 				{
 					var settingsRawText = SIL.IO.RobustFile.ReadAllText(settingsPath);
 					_publishSettings = DynamicJson.Parse(settingsRawText, Encoding.UTF8) as DynamicJson;
-					if (_bloomVersion < 5.4F)
+					if (_bloomVersion < _version5_4)
 					{
 						if (!_publishSettings.IsDefined("epub"))
 						{
@@ -159,7 +148,7 @@ namespace BloomHarvester
 					_publishSettings = null;
 				}
 			}
-			if (_publishSettings == null && _bloomVersion < 5.4F)
+			if (_publishSettings == null && _bloomVersion < _version5_4)
 			{
 				_publishSettings = DynamicJson.Parse("{\"epub\":{\"mode\":\"flowable\"}}");
 				needSave = true;
@@ -385,7 +374,7 @@ namespace BloomHarvester
 			// Bloom 5.4 sets a default value of "fixed" unless the user changes it.
 			// Previous versions of Bloom should not even have a value for this setting,
 			// but we set it to "flowable" earlier to preserve old behavior.
-			if (mode == "fixed" && _bloomVersion >= 5.4)
+			if (mode == "fixed" && _bloomVersion >= _version5_4)
 				return true;
 			foreach (var div in GetNumberedPages().ToList())
 			{

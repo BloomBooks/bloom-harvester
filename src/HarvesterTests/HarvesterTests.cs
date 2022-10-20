@@ -428,6 +428,8 @@ namespace BloomHarvesterTests
 
 			_fakeFileIO = fileIO ?? Substitute.For<IFileIO>();
 
+			var logEnvironment = options.Environment;	// default value
+
 			if (fontChecker == null)
 			{
 				_fakeFontChecker = Substitute.For<IFontChecker>();
@@ -438,7 +440,7 @@ namespace BloomHarvesterTests
 			else
 				_fakeFontChecker = fontChecker;
 
-			var harvester = Substitute.ForPartsOf<Harvester>(options, EnvironmentSetting.Local, identifier, _fakeParseClient, _fakeBloomS3Client, _fakeS3UploadClient, _fakeDownload, _fakeIssueReporter, _logger, _fakeBloomCli, _fakeFontChecker, _fakeDiskSpaceManager, _fakeFileIO);
+			var harvester = Substitute.ForPartsOf<Harvester>(options, EnvironmentSetting.Local, identifier, _fakeParseClient, _fakeBloomS3Client, _fakeS3UploadClient, _fakeDownload, _fakeIssueReporter, _logger, _fakeBloomCli, _fakeFontChecker, _fakeDiskSpaceManager, logEnvironment, _fakeFileIO);
 
 			harvester.Configure().GetAnalyzer(default).ReturnsForAnyArgs(bookAnalyzer ?? Substitute.For<IBookAnalyzer>());
 

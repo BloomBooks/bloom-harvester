@@ -30,6 +30,7 @@ namespace BloomHarvester
 
 		protected HarvesterOptions _options;	// Keep a copy of the options passed in
 		private EnvironmentSetting _parseDBEnvironment;
+		private EnvironmentSetting _logEnvironment;
 		private int _delayAfterEmptyRunSecs = 300;
 		private DateTime _initTime;	// Used to provide a unique folder name for each Harvester instance
 		private HashSet<string> _cumulativeFailedBookIdSet = new HashSet<string>();
@@ -43,6 +44,10 @@ namespace BloomHarvester
 		// So we check for the ePUB file existing when Bloom finishes and reports success.  This information
 		// is needed when setting Artifact suitability, not just when trying to upload the ePUB.
 		private bool _ePubExists;
+		private bool _ePubSuitable;
+		// We need to check whether the PDF file exists for both font analytics and for setting Artifact
+		// suitability.
+		private bool _pdfExists;
 
 		// These vars handle the application being exited while a book is still InProgress
 		private string _currentBookId = null;   // The ID of the current book for as long as that book has the "InProgress" state set on it. Should be set back to null/empty when the state is no longer "InProgress"
@@ -85,10 +90,11 @@ namespace BloomHarvester
 			IBookDownload downloadClient,
 			IBloomCliInvoker bloomCli,
 			IDiskSpaceManager diskSpaceManager,
-			IFontChecker fontChecker
+			IFontChecker fontChecker,
+			EnvironmentSetting logEnvironment
 			) args)
 			:this(options, args.parseDBEnvironment, args.identifier, args.parseClient, args.s3DownloadClient, args.s3uploadClient, args.downloadClient,
-				 args.issueReporter, args.logger, args.bloomCli, args.fontChecker, args.diskSpaceManager,
+				 args.issueReporter, args.logger, args.bloomCli, args.fontChecker, args.diskSpaceManager, args.logEnvironment,
 				 fileIO: new FileIO())
 		{
 		}
@@ -122,6 +128,7 @@ namespace BloomHarvester
 			IBloomCliInvoker bloomCliInvoker,
 			IFontChecker fontChecker,
 			IDiskSpaceManager diskSpaceManager,
+			EnvironmentSetting logEnvironment,
 			IFileIO fileIO)
 		{
 			// Just copying from parameters
@@ -138,6 +145,7 @@ namespace BloomHarvester
 			_fontChecker = fontChecker;
 			_logger = logger;
 			_diskSpaceManager = diskSpaceManager;
+			_logEnvironment = logEnvironment;
 			_fileIO = fileIO;
 
 			// Additional constructor setup
@@ -177,7 +185,8 @@ namespace BloomHarvester
 			IBookDownload downloadClient,
 			IBloomCliInvoker bloomCli,
 			IDiskSpaceManager diskSpaceManager,
-			IFontChecker fontChecker
+			IFontChecker fontChecker,
+			EnvironmentSetting logEnvironment
 		) GetConstructorArguments(HarvesterOptions options)
 		{
 			// Safer to get this issueReporter stuff out of the way as first, in case any construction code generates a YouTrack issue.
@@ -204,14 +213,14 @@ namespace BloomHarvester
 			var driveInfo = GetHarvesterDrive();
 			var diskSpaceManager = new DiskSpaceManager(driveInfo, logger, issueReporter);
 
-			return (issueReporter, parseDBEnvironment, identifier, logger, parseClient, s3DownloadClient, s3UploadClient, downloadClient, bloomCli, diskSpaceManager, fontChecker);
+			return (issueReporter, parseDBEnvironment, identifier, logger, parseClient, s3DownloadClient, s3UploadClient, downloadClient, bloomCli, diskSpaceManager, fontChecker, logEnvironment);
 		}
 
 		/// <summary>
 		/// Based on the Parse environment, determines the Amazon S3 bucket names to download and upload from.
 		/// </summary>
 		/// <returns>A tuple of 2 strings. The first string is the bucket name from which to download books. The 2nd is the bucket name to upload harvested artifacts</returns>
-		protected static (string downloadBucketName, string uploadBucketName) GetS3BucketNames(EnvironmentSetting parseDBEnvironment)
+		internal static (string downloadBucketName, string uploadBucketName) GetS3BucketNames(EnvironmentSetting parseDBEnvironment)
 		{
 			string downloadBucketName, uploadBucketName;
 
@@ -592,7 +601,7 @@ namespace BloomHarvester
 
 				// Parse DB initial updates
 				// We want to write that it is InProgress as soon as possible, but we also want a copy of the original state
-				var originalBookModel  = (BookModel)book.Model.Clone();
+				var originalBookModel = (BookModel)book.Model.Clone();
 				_currentBookFailedIndefinitely = originalBookModel.HarvestState?.ToLowerInvariant() == HarvestState.FailedIndefinitely.ToString().ToLowerInvariant();
 				book.Model.HarvestState = Parse.Model.HarvestState.InProgress.ToString();
 				book.Model.HarvesterId = this.Identifier;
@@ -602,13 +611,16 @@ namespace BloomHarvester
 
 				if (!_options.ReadOnly)
 				{
-					_currentBookId = book.Model.ObjectId;					
+					_currentBookId = book.Model.ObjectId;
 				}
 				book.Model.FlushUpdateToDatabase(_parseClient, _options.ReadOnly);
 
 				// Download the book
 				string decodedUrl = HttpUtility.UrlDecode(book.Model.BaseUrl);
 				collectionBookDir = DownloadBookAndCopyToCollectionFolder(book, decodedUrl, originalBookModel);
+
+				// Check whether the PDF file exists in the cloud.
+				_pdfExists = CheckIfPdfExists(decodedUrl, _parseDBEnvironment, _bloomS3Client);
 
 				// Process the book
 				List<LogEntry> harvestLogEntries = CheckForMissingOrInvalidFontErrors(collectionBookDir, book);
@@ -629,10 +641,11 @@ namespace BloomHarvester
 					var analyzer = GetAnalyzer(collectionBookDir);
 					var collectionFilePath = analyzer.WriteBloomCollection(collectionBookDir);
 					book.Analyzer = analyzer;
+					_ePubSuitable = analyzer.IsEpubSuitable(harvestLogEntries);
 
-                    // This must run before CreateArtifacts because Bloom can change the actual folder name for
-                    // collectionBookDir if it is an artifact of multiple copies of the same title on the uploader's
-                    // computer.  See https://issues.bloomlibrary.org/youtrack/issue/BH-5551.
+					// This must run before CreateArtifacts because Bloom can change the actual folder name for
+					// collectionBookDir if it is an artifact of multiple copies of the same title on the uploader's
+					// computer.  See https://issues.bloomlibrary.org/youtrack/issue/BH-5551.
 					if (!_options.SkipUpdatePerceptualHash)
 						isSuccessful &= UpdatePerceptualHash(book, analyzer, collectionBookDir, harvestLogEntries);
 
@@ -726,6 +739,20 @@ namespace BloomHarvester
 			return isSuccessful;
 		}
 
+		internal static bool CheckIfPdfExists(string decodedUrl, EnvironmentSetting parseDBEnvironment, IS3Client bloomS3Client)
+		{
+			var downloadBucket = GetS3BucketNames(parseDBEnvironment).ToTuple().Item1;
+			var downloadHeading = $"{HarvesterS3Client.GetBloomS3UrlPrefix()}{downloadBucket}/";
+			var downloadFolder = decodedUrl.Replace(downloadHeading, "").TrimEnd(new[] { ' ', '\t', '/', '\\' });
+			var bookFileName = Path.GetFileName(downloadFolder);
+			var pdfExists = bloomS3Client.DoesFileExist($"{downloadFolder}/{bookFileName}.pdf");
+			if (pdfExists)
+				Debug.WriteLine($"DEBUG: {downloadFolder}/{bookFileName}.pdf exists");
+			else
+				Debug.WriteLine($"DEBUG: {downloadFolder}/{bookFileName}.pdf does not exist");
+			return pdfExists;
+		}
+
 		/// <summary>
 		/// Download the book if necessary, ensuring that it ends up in a unique folder in the cache
 		/// folder.  Then copy the book folder to the collection folder under the book's title.
@@ -733,34 +760,41 @@ namespace BloomHarvester
 		/// <returns>file path of the book's folder in the collection folder</returns>
 		private string DownloadBookAndCopyToCollectionFolder(Book book, string decodedUrl, BookModel originalBookModel)
 		{
+			return DownloadBookAndCopyToCollectionFolder(book, decodedUrl, originalBookModel,
+			_logger, _diskSpaceManager, _downloadClient, _parseDBEnvironment, _options.ForceDownload, _options.SkipDownload);
+		}
+		internal static string DownloadBookAndCopyToCollectionFolder(Book book, string decodedUrl, BookModel originalBookModel,
+			IMonitorLogger logger, IDiskSpaceManager diskSpaceManager, IBookDownload downloadClient, EnvironmentSetting parseDBEnvironment,
+			bool forceDownload, bool skipDownload)
+		{
 			var urlComponents = new S3UrlComponents(decodedUrl);
 
 			// The download/cache folder must use unique names for books to avoid collisions.  The book's
 			// objectId seems like as good as a choice as any.  Titles certainly aren't unique!
-			string downloadBookDir = Path.Combine(this.GetBookCacheFolder(), book.Model.ObjectId);
+			string downloadBookDir = Path.Combine(GetBookCacheFolder(parseDBEnvironment), book.Model.ObjectId);
 			// Note: Make sure you use the title as it appears on the filesystem.
 			// It may differ from the title in the Parse DB if the title contains punctuation which are not valid in file paths.
-			var collectionBookDir = Path.Combine(this.GetBookCollectionPath(), urlComponents.BookTitle);
-			bool canUseExisting = TryUseExistingBookDownload(originalBookModel, downloadBookDir);
+			var collectionBookDir = Path.Combine(GetBookCollectionPath(parseDBEnvironment), urlComponents.BookTitle);
+			bool canUseExisting = TryUseExistingBookDownload(originalBookModel, downloadBookDir, forceDownload, skipDownload);
 
 			if (canUseExisting)
 			{
-				_logger.TrackEvent("Using Cached Book");
+				logger.TrackEvent("Using Cached Book");
 			}
 			else
 			{
-				_logger.TrackEvent("Download Book");
+				logger.TrackEvent("Download Book");
 
 				// Check on how we're doing on disk space
-				_diskSpaceManager?.CleanupIfNeeded();
+				diskSpaceManager?.CleanupIfNeeded();
 
 				// FYI, there's no need to delete this book folder first.
 				// _downloadClient.HandleDownloadWithoutProgress() removes outdated content for us.
 				string urlWithoutTitle = RemoveBookTitleFromBaseUrl(decodedUrl);
-				string downloadRootDir = GetBookCacheFolder();
+				string downloadRootDir = GetBookCacheFolder(parseDBEnvironment);
 				// HandleDownloadWithoutProgress has a nested subcall to BloomS3Client.cs::AvoidThisFile() which looks at HarvesterMode
 				Bloom.Program.RunningHarvesterMode = true;
-				var downloadedDir = _downloadClient.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
+				var downloadedDir = downloadClient.HandleDownloadWithoutProgress(urlWithoutTitle, downloadRootDir);
 				// The download process appears to inherently use the book's title, so we need
 				// to rename the folder to what we want for caching purposes.
 				if (downloadedDir != downloadBookDir)
@@ -771,7 +805,7 @@ namespace BloomHarvester
 				}
 			}
 			// Copy the book's folder from the cache location to the collection folder.
-			Directory.CreateDirectory(GetBookCollectionPath());
+			Directory.CreateDirectory(GetBookCollectionPath(parseDBEnvironment));
 			if (Directory.Exists(collectionBookDir))
 				Directory.Delete(collectionBookDir, true); // best to be safe...
 			DirectoryHelper.Copy(downloadBookDir, collectionBookDir, true);
@@ -826,12 +860,12 @@ namespace BloomHarvester
 		/// <param name="originalBookModel">The bookModel at the very beginning of processing, without any updates we've made.</param>
 		/// <param name="pathToExistingBook">The path of the book to check</param>
 		/// <returns>True if it's ok to use</returns>
-		private bool TryUseExistingBookDownload(BookModel originalBookModel, string pathToCheck)
+		private static bool TryUseExistingBookDownload(BookModel originalBookModel, string pathToCheck, bool forceDownload, bool skipDownload)
 		{
-			if (_options.ForceDownload)
+			if (forceDownload)
 				return false;
 
-			if (_options.SkipDownload)
+			if (skipDownload)
 				return Directory.Exists(pathToCheck);
 
 			ParseDate lastHarvestedDate = originalBookModel.HarvestStartedAt;
@@ -893,7 +927,7 @@ namespace BloomHarvester
 
 			if (!_options.SkipUploadEPub || anyFontErrors)
 			{
-				book.SetHarvesterEvaluation("epub", isSuccessful && _ePubExists && analyzer.IsEpubSuitable(harvestLogEntries));
+				book.SetHarvesterEvaluation("epub", isSuccessful && _ePubExists && _ePubSuitable);
 			}
 
 			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontErrors)
@@ -909,24 +943,14 @@ namespace BloomHarvester
 			}
 
 			// harvester never makes pdfs at the moment, but it now checks for the existence of the pdf file.
-			var decodedUrl = HttpUtility.UrlDecode(book.Model.BaseUrl);
-			var downloadBucket = GetS3BucketNames(_parseDBEnvironment).ToTuple().Item1;
-			var downloadHeading = $"{HarvesterS3Client.GetBloomS3UrlPrefix()}{downloadBucket}/";
-			var downloadFolder = decodedUrl.Replace(downloadHeading,"").TrimEnd(new[] {' ', '\t', '/', '\\' });
-			var bookFileName = Path.GetFileName(downloadFolder);
-			if (book.Model != null && !_bloomS3Client.DoesFileExist($"{downloadFolder}/{bookFileName}.pdf"))
+			if (book.Model != null && !_pdfExists)
 			{
-				Debug.WriteLine($"DEBUG: {downloadFolder}/{bookFileName}.pdf does not exist");
 				if (book.Model.Show == null)
 					book.Model.Show = JsonConvert.DeserializeObject($"{{ \"pdf\": {{ \"exists\": false }} }}");
 				else if (book.Model.Show.pdf == null)
 					book.Model.Show.pdf = JsonConvert.DeserializeObject($"{{ \"exists\": false }}");
 				else
 					book.Model.Show.pdf.exists = false;
-			}
-			else
-			{
-				Debug.WriteLine($"DEBUG: {downloadFolder}/{bookFileName}.pdf exists");
 			}
 
 			// harvester checks the license to evaluate "shellbook", ignoring any success in generating artifacts
@@ -1261,6 +1285,32 @@ namespace BloomHarvester
 						bloomArguments += $" \"--thumbnailOutputInfoPath={thumbnailInfoPath}\"";
 					}
 
+					// Ensure that font analytics are marked as "test_only" if any environment setting is not effectively "Production"
+					if (_options.Environment != EnvironmentSetting.Prod ||
+						_parseDBEnvironment != EnvironmentSetting.Prod ||
+						_logEnvironment != EnvironmentSetting.Prod)
+					{
+						bloomArguments += " --testing";
+					}
+
+					// Skip sending font analytics if so directed.
+					if (_options.SkipAnalytics)
+					{
+						bloomArguments += " --noAnalytics";
+					}
+					else
+					{
+						// Skip ePUB and PDF font analytics if they aren't actually published.
+						if (!_ePubSuitable)
+						{
+							bloomArguments += " --skipEpubAnalytics";
+						}
+						if (!_pdfExists)
+						{
+							bloomArguments += " --skipPdfAnalytics";
+						}
+					}
+
 					// Start a Bloom command line in a separate process
 					var bloomCliStopwatch = new Stopwatch();
 					bloomCliStopwatch.Start();
@@ -1377,7 +1427,7 @@ namespace BloomHarvester
 		/// The drive containing the downloaded books
 		/// </summary>
 		/// <returns></returns>
-		private static IDriveInfo GetHarvesterDrive()
+		internal static IDriveInfo GetHarvesterDrive()
 		{
 			var fileInfo = new FileInfo(GetRootPath());
 			var driveInfo = new DriveInfo(fileInfo.Directory.Root.FullName);
@@ -1414,18 +1464,28 @@ namespace BloomHarvester
 
 		internal string GetBookCollectionPath()
 		{
+			return GetBookCollectionPath(_parseDBEnvironment);
+		}
+
+		internal static string GetBookCollectionPath(EnvironmentSetting parseDBEnvironment)
+		{
 			// Note: This has the same problems as the next method for running multiple instances of
 			// Harvester at the same time on the same computer.
-			return Path.Combine(Path.GetTempPath(), "BloomHarvester", "Collection", _parseDBEnvironment.ToString());
+			return Path.Combine(Path.GetTempPath(), "BloomHarvester", "Collection", parseDBEnvironment.ToString());
 		}
 
 		internal string GetBookCacheFolder()
+		{
+			return GetBookCacheFolder(_parseDBEnvironment);
+		}
+
+		internal static string GetBookCacheFolder(EnvironmentSetting parseDBEnvironment)
 		{
 			// Note: If there are multiple instances of the Harvester processing the same environment,
 			//       and they both process the same book, they will attempt to download to the same path, which will probably be bad.
 			//       But for now, the benefit of having each run download into a predictable location (allows caching when enabled)
 			//       seems to outweigh the cost (since we don't normally run multiple instances w/the same env on same machine)
-			return Path.Combine(GetRootPath(), "BloomHarvester", _parseDBEnvironment.ToString());
+			return Path.Combine(GetRootPath(), "BloomHarvester", parseDBEnvironment.ToString());
 		}
 
 		internal string GetBloomDigitalArtifactsPath()

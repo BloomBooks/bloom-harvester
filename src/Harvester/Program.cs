@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -39,6 +40,8 @@ namespace BloomHarvester
 		//
 		// batchUpdateState --parseDBEnvironment=dev "--queryWhere={ \"harvestState\":\"Failed\"}" --newState="Unknown"
 		//
+		// sendFontAnalytics --environment=dev "--queryWhere={\"objectId\":{\"$in\":[\"OJexm5vRmL\",\"0urUQlAXB0\",\"26Ycfw11AX\",\"YUp8DDmEHj\"]}}" --testing
+		// sendFontAnalytics --environment=dev "--queryWhere={\"uploader\":{\"__type\":\"Pointer\",\"className\":\"_User\",\"objectId\":\"XT4pBjhjmU\"}}" --testing
 		[STAThread]
 		public static void Main(string[] args)
 		{
@@ -48,6 +51,8 @@ namespace BloomHarvester
 				Console.WriteLine("Harvester cannot run on Linux until we verify that phash computations always yield the same result on both Windows and Linux!");
 				return;
 			}
+
+			var timer = new Stopwatch();
 
 			// See https://github.com/commandlineparser/commandline for documentation about CommandLine.Parser
 			var parser = new CommandLine.Parser((settings) =>
@@ -59,23 +64,33 @@ namespace BloomHarvester
 
 			try
 			{
-				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions>(args)
+				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions, SendFontAnalyticsOptions>(args)
 					.WithParsed<HarvesterOptions>(options =>
 					{
 						options.ValidateOptions();
+						if (!options.Loop)
+							timer.Start();
 						Harvester.RunHarvest(options);
 					})
 					.WithParsed<UpdateStateInParseOptions>(options =>
 					{
+						timer.Start();
 						HarvestStateUpdater.UpdateState(options.ParseDBEnvironment, options.ObjectId, options.NewState);
 					})
 					.WithParsed<BatchUpdateStateInParseOptions>(options =>
 					{
+						timer.Start();
 						HarvestStateBatchUpdater.RunBatchUpdateStates(options);
 					})
 					.WithParsed<GenerateProcessedFilesTSVOptions>(options =>
 					{
+						timer.Start();
 						ProcessedFilesInfoGenerator.GenerateTSV(options);
+					})
+					.WithParsed<SendFontAnalyticsOptions>(options =>
+					{
+						timer.Start();
+						FontAnalytics.SendAnalytics(options);
 					})
 					.WithNotParsed(errors =>
 					{
@@ -87,6 +102,11 @@ namespace BloomHarvester
 			{
 				YouTrackIssueConnector.GetInstance(EnvironmentSetting.Unknown).ReportException(e, "An exception was thrown which was not handled by the program.", null);
 				throw;
+			}
+			if (timer.IsRunning)
+			{
+				timer.Stop();
+				Console.Out.WriteLine($"BloomHarvester finished in {timer.Elapsed.TotalSeconds:0.0} seconds.");
 			}
 		}
 	}
@@ -152,6 +172,9 @@ namespace BloomHarvester
 		[Option("skipUpdateMetadata", Required = false, Default = false, HelpText = "If true, will skip updating the metadata (e.g. Features field) in Parse.")]
 		public bool SkipUpdateMetadata { get; set; }
 
+		[Option("skipAnalytics", Required = false, Default = false, HelpText = "If true, will not upload font analytics for the book(s)")]
+		public bool SkipAnalytics { get; set; }
+
 		public virtual string GetPrettyPrint()
 		{
 			return $"mode: {Mode}\n" +
@@ -160,10 +183,19 @@ namespace BloomHarvester
 				$"logEnvironment: {LogEnvironment}\n" +
 				$"suppressLogs: {SuppressLogs}\n" +
 				$"queryWhere: {QueryWhere}\n" +
+				$"readOnly: {ReadOnly}\n" +
 				$"count: {Count}\n" +
+				$"loop: {Loop}\n" +
+				$"loopWaitSeconds: {LoopWaitSeconds}\n" +
+				$"forceDownload: {ForceDownload}\n" +
+				$"skipDownload: {SkipDownload}\n" +
 				$"skipUploadBloomDigitalArtifacts: {SkipUploadBloomDigitalArtifacts}\n" +
 				$"skipUploadEPub: {SkipUploadEPub}\n" +
-				$"skipUploadBloomSource: {SkipUploadBloomSource}\n";
+				$"skipUploadBloomSource: {SkipUploadBloomSource}\n" +
+				$"skipUploadThumbnails: {SkipUploadThumbnails}\n" +
+				$"skipUpdatePerceptualHash: {SkipUpdatePerceptualHash}\n" +
+				$"skipUpdateMetadata: {SkipUpdateMetadata}\n" +
+				$"skipAnalytics: {SkipAnalytics}\n";
 		}
 
 		public void ValidateOptions()
@@ -218,5 +250,21 @@ namespace BloomHarvester
 
 		[Option("outputPath", Required = true, HelpText = "Location of the output file")]
 		public string OutputPath { get; set; }
+	}
+
+	[Verb("sendFontAnalytics", HelpText = "Send font analytics from the given book(s)")]
+	public class SendFontAnalyticsOptions
+	{
+		[Option('e', "environment", Required = false, Default = EnvironmentSetting.Dev, HelpText = "Sets all environments to read/write from. Valid values are Default, Dev, Test, or Prod. If any individual component's environment are set to non-default, that value will take precedence over this.")]
+		public EnvironmentSetting Environment { get; set; }
+
+		[Option("queryWhere", Required = false, Default = "", HelpText = "If specified, adds a WHERE clause to the request query when retrieving the list of books to process. This should be in the JSON format used by Parse REST API to pass WHERE clauses. See https://docs.parseplatform.org/rest/guide/#query-constraints")]
+		public string QueryWhere { get; set; }
+
+		[Option("testing", Required = false, Default = false, HelpText = "Force all analytics to be marked as test_only")]
+		public bool Testing { get; set; }
+
+		[Option("forceDownload", Required = false, Default = false,  HelpText = "If true, will force the re-downloading of a book, even if it already exists.")]
+		public bool ForceDownload { get; set; }
 	}
 }
