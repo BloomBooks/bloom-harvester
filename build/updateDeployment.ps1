@@ -118,13 +118,20 @@ If ($anyEnvVarsMissing) {
 }
 
 # Startup RestartOnCrash, or just startup the Harvester directly as a fallback
-If ((Test-Path -Path $restartOnCrashPath -PathType Leaf)) {
-    Write-Host "Running RestartOnCrash from: $($restartOnCrashPath)"
-    Start-Process -FilePath $restartOnCrashPath
-} Else {
-    Write-Host "RestartOnCrash not found at $($restartOnCrashPath)"
-    Write-Host "Starting Harvester"
-    Start-Process -FilePath $harvesterExePath -ArgumentList  @("harvest", "--mode=default", "--environment=$($environment)", "--parseDBEnvironment=$($environment)", "--count=1", "--loop", "--loopWaitSeconds=60")
-}
+#If ((Test-Path -Path $restartOnCrashPath -PathType Leaf)) {
+#    Write-Host "Running RestartOnCrash from: $($restartOnCrashPath)"
+#    Start-Process -FilePath $restartOnCrashPath
+#} Else {
+#    Write-Host "RestartOnCrash not found at $($restartOnCrashPath)"
+#    Write-Host "Starting Harvester"
+#    Start-Process -FilePath $harvesterExePath -ArgumentList  @("harvest", "--mode=default", "--environment=$($environment)", "--parseDBEnvironment=$($environment)", "--count=1", "--loop", "--loopWaitSeconds=60")
+#}
+
+# Don't try to startup the Harvester automatically anymore. Right now, the first time you run it,
+# it fails if it's run as a background process (seems to be due to L10nSharp failing).
+# But if you run it manually via a CLI first, and L10nSharp does its updates successfully, in subsequent runs
+# you can run it either from CLI or as a background process
+Write-Host "Please start the Harvester manually via a CLI and ensure it successfully processes a book"
+
 
 Write-Host "Done"
