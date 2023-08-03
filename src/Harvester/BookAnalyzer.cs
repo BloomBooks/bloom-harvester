@@ -15,6 +15,7 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SIL.Xml;
 using Bloom.Collection;
+using SIL.IO;
 
 namespace BloomHarvester
 {
@@ -376,9 +377,17 @@ namespace BloomHarvester
 		public string WriteBloomCollection(string bookFolder)
 		{
 			var collectionFolder = Path.GetDirectoryName(bookFolder);
-			var result = Path.Combine(collectionFolder, "temp.bloomCollection");
-			File.WriteAllText(result, BloomCollection, Encoding.UTF8);
-			return result;
+			var tempSettingsPath = Path.Combine(collectionFolder, "temp.bloomCollection");
+			var uploadedSettingsPath = Path.Combine(bookFolder, "collectionFiles", "book.uploadCollectionSettings");
+			if (RobustFile.Exists(uploadedSettingsPath))
+			{
+				RobustFile.Copy(uploadedSettingsPath, tempSettingsPath, true);
+			}
+			else
+			{
+				RobustFile.WriteAllText(tempSettingsPath, BloomCollection, Encoding.UTF8);
+			}
+			return tempSettingsPath;
 		}
 
 		public string Language1Code { get;}
