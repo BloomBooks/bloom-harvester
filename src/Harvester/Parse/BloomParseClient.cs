@@ -28,9 +28,6 @@ namespace BloomHarvester.Parse
 
 		public BloomParseClient()
 		{
-			var keys = AccessKeys.GetAccessKeys(BookUpload.UploadBucketNameForCurrentEnvironment);
-
-			ApplicationId = keys.ParseApplicationKey;
 		}
 
 		public void SetLoginData(string account, string parseUserObjectId, string sessionToken, string destination)
@@ -39,7 +36,7 @@ namespace BloomHarvester.Parse
 			Settings.Default.WebUserId = account;
 			Settings.Default.LastLoginSessionToken = sessionToken;
 			Settings.Default.LastLoginDest = destination;
-			Settings.Default.LastLoginParseObjectId = parseUserObjectId;
+			Settings.Default.LastLoginUserId = parseUserObjectId;
 			Settings.Default.Save();
 			_userId = parseUserObjectId;
 			_sessionToken = sessionToken;
@@ -52,7 +49,7 @@ namespace BloomHarvester.Parse
 				progress.WriteError("Please first log in from Bloom:Publish:Web, then quit and try again. (LastLoginSessionToken)");
 				return false;
 			}
-			if (string.IsNullOrEmpty(Settings.Default.LastLoginParseObjectId))
+			if (string.IsNullOrEmpty(Settings.Default.LastLoginUserId))
 			{
 				progress.WriteError("Please first log in from Bloom:Publish:Web, then quit and try again. (LastLoginParseObjectId)");
 				return false;
@@ -71,23 +68,13 @@ namespace BloomHarvester.Parse
 				return false;
 			}
 
-			SetLoginData(Settings.Default.WebUserId, Settings.Default.LastLoginParseObjectId,
+			SetLoginData(Settings.Default.WebUserId, Settings.Default.LastLoginUserId,
 				Settings.Default.LastLoginSessionToken, destination);
 
 			return true;
 		}
 
-		protected RestClient Client
-		{
-			get
-			{
-				if (_client == null)
-				{
-					_client = new RestClient(GetRealUrl());
-				}
-				return _client;
-			}
-		}
+		protected RestClient Client => _client;
 
 		public string ApplicationId { get; protected set; }
 
@@ -105,11 +92,6 @@ namespace BloomHarvester.Parse
 			{
 				return !string.IsNullOrEmpty(_sessionToken);
 			}
-		}
-
-		public string GetRealUrl()
-		{
-			return UrlLookup.LookupUrl(UrlType.Parse, null, BookUpload.UseSandbox);
 		}
 
 		private RestRequest MakeRequest(string path, Method requestType)
