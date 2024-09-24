@@ -16,6 +16,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SIL.Xml;
 using Bloom.Collection;
 using SIL.IO;
+using Bloom.SafeXml;
 
 namespace BloomHarvester
 {
@@ -43,7 +44,7 @@ namespace BloomHarvester
 	class BookAnalyzer : CollectionSettingsReconstructor, IBookAnalyzer
 	{
 		private readonly Version _bloomVersion;
-		private readonly Version _version5_4 = new Version(5,4);
+		private readonly Version _version5_4 = new Version(5, 4);
 		private readonly dynamic _publishSettings;
 
 		public BookAnalyzer(string html, string meta, string bookDirectory = "")
@@ -57,9 +58,9 @@ namespace BloomHarvester
 			}
 			// Extract the Bloom version that created/uploaded the book.
 			_bloomVersion = _dom.GetGeneratorVersion();
-			var generatorNode = _dom.RawDom.SelectSingleNode("//head/meta[@name='Generator']") as XmlElement;
+			//var generatorNode = _dom.RawDom.SelectSingleNode("//head/meta[@name='Generator']") as SafeXmlElement;
 			_publishSettings = null;
-			var settingsPath = Path.Combine(_bookDirectory,"publish-settings.json");
+			var settingsPath = Path.Combine(_bookDirectory, "publish-settings.json");
 			var needSave = false;
 			if (SIL.IO.RobustFile.Exists(settingsPath))
 			{
@@ -80,7 +81,7 @@ namespace BloomHarvester
 						}
 						else if (!_publishSettings.epub.IsDefined("mode"))
 						{
-							_publishSettings.epub.mode = "flowable";	// traditional behavior
+							_publishSettings.epub.mode = "flowable";    // traditional behavior
 							needSave = true;
 						}
 						if (_publishSettings.epub.mode == "fixed")
@@ -204,20 +205,20 @@ namespace BloomHarvester
 			foreach (var div in GetNumberedPages().ToList())
 			{
 				var imageContainers = div.SafeSelectNodes("div[contains(@class,'marginBox')]//div[contains(@class,'bloom-imageContainer')]");
-				if (imageContainers.Count > 1)
+				if (imageContainers.Count() > 1)
 				{
 					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple images"));
 					return false;
 				}
 				// Count any translation group which is not an image description
 				var translationGroups = GetTranslationGroupsFromPage(div, includeImageDescriptions: false);
-				if (translationGroups.Count > 1)
+				if (translationGroups.Count() > 1)
 				{
 					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple text boxes"));
 					return false;
 				}
 				var videos = div.SafeSelectNodes("following-sibling::div[contains(@class,'marginBox')]//video");
-				if (videos.Count > 1)
+				if (videos.Count() > 1)
 				{
 					harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "Bad ePUB because some page(s) had multiple videos"));
 					return false;
@@ -247,7 +248,7 @@ namespace BloomHarvester
 				++pageCount;
 				int wordCountForThisPage = 0;
 
-				IEnumerable<XmlElement> editables = GetEditablesFromPage(pageElement, Language1Code, includeImageDescriptions: false, includeTextOverPicture: true);
+				IEnumerable<SafeXmlElement> editables = GetEditablesFromPage(pageElement, Language1Code, includeImageDescriptions: false, includeTextOverPicture: true);
 				foreach (var editable in editables)
 				{
 					wordCountForThisPage += GetWordCount(editable.InnerText);
@@ -339,16 +340,16 @@ namespace BloomHarvester
 			// Originally the code had p{C} (all Control characters), but this was too all-encompassing.
 			const string whitespace = "\\p{Z}";
 			const string controlChars = "\\p{Cc}"; // "real" Control characters
-											// The following constants are Control(format) [p{Cf}] characters that should split words.
-											// e.g. ZERO WIDTH SPACE is a Control(format) charactor
-											// (See http://issues.bloomlibrary.org/youtrack/issue/BL-3933),
-											// but so are ZERO WIDTH JOINER and NON JOINER (See https://issues.bloomlibrary.org/youtrack/issue/BL-7081).
-											// See list at: https://www.compart.com/en/unicode/category/Cf
+												   // The following constants are Control(format) [p{Cf}] characters that should split words.
+												   // e.g. ZERO WIDTH SPACE is a Control(format) charactor
+												   // (See http://issues.bloomlibrary.org/youtrack/issue/BL-3933),
+												   // but so are ZERO WIDTH JOINER and NON JOINER (See https://issues.bloomlibrary.org/youtrack/issue/BL-7081).
+												   // See list at: https://www.compart.com/en/unicode/category/Cf
 			const string zeroWidthSplitters = "\u200b"; // ZERO WIDTH SPACE
 			const string ltrrtl = "\u200e\u200f"; // LEFT-TO-RIGHT MARK / RIGHT-TO-LEFT MARK
 			const string directional = "\u202A-\u202E"; // more LTR/RTL/directional markers
 			const string isolates = "\u2066-\u2069"; // directional "isolate" markers
-											  // split on whitespace, Control(control) and some Control(format) characters
+													 // split on whitespace, Control(control) and some Control(format) characters
 			regex = new Regex(
 				"[" +
 					whitespace +
@@ -362,7 +363,7 @@ namespace BloomHarvester
 			return regex.Split(s.Trim());
 		}
 
-		private IEnumerable<XmlElement> GetNumberedPages() => _dom.SafeSelectNodes("//div[contains(concat(' ', @class, ' '),' numberedPage ')]").Cast<XmlElement>();
+		private IEnumerable<SafeXmlElement> GetNumberedPages() => _dom.SafeSelectNodes("//div[contains(concat(' ', @class, ' '),' numberedPage ')]").Cast<SafeXmlElement>();
 
 		/// <remarks>This xpath assumes it is rooted at the level of the marginBox's parent (the page).</remarks>
 		private static string GetTranslationGroupsXpath(bool includeImageDescriptions)
@@ -378,7 +379,7 @@ namespace BloomHarvester
 		/// Gets the translation groups for the current page that are not within the image container
 		/// </summary>
 		/// <param name="pageElement">The page containing the bloom-editables</param>
-		private static XmlNodeList GetTranslationGroupsFromPage(XmlElement pageElement, bool includeImageDescriptions)
+		private static SafeXmlNode[] GetTranslationGroupsFromPage(SafeXmlElement pageElement, bool includeImageDescriptions)
 		{
 			return pageElement.SafeSelectNodes(GetTranslationGroupsXpath(includeImageDescriptions));
 		}
@@ -388,13 +389,13 @@ namespace BloomHarvester
 		/// </summary>
 		/// <param name="pageElement">The page containing the bloom-editables</param>
 		/// <param name="lang">Only bloom-editables matching this ISO language code will be returned</param>
-		private static IEnumerable<XmlElement> GetEditablesFromPage(XmlElement pageElement, string lang, bool includeImageDescriptions = true, bool includeTextOverPicture = true)
+		private static IEnumerable<SafeXmlElement> GetEditablesFromPage(SafeXmlElement pageElement, string lang, bool includeImageDescriptions = true, bool includeTextOverPicture = true)
 		{
 			string translationGroupXPath = GetTranslationGroupsXpath(includeImageDescriptions);
 			string langFilter = HtmlDom.IsLanguageValid(lang) ? $"[@lang='{lang}']" : "";
 
 			string xPath = $"{translationGroupXPath}//div[contains(@class,'bloom-editable')]{langFilter}";
-			var editables = pageElement.SafeSelectNodes(xPath).Cast<XmlElement>();
+			var editables = pageElement.SafeSelectNodes(xPath).Cast<SafeXmlElement>();
 
 			foreach (var editable in editables)
 			{
@@ -403,7 +404,7 @@ namespace BloomHarvester
 				{
 					var textOverPictureMatch = GetClosestMatch(editable, (e) =>
 					{
-						return HtmlDom.HasClass(e, "bloom-textOverPicture");
+						return e.HasClass("bloom-textOverPicture");
 					});
 
 					isOk = textOverPictureMatch == null;
@@ -414,7 +415,7 @@ namespace BloomHarvester
 			}
 		}
 
-		internal delegate bool ElementMatcher(XmlElement element);
+		internal delegate bool ElementMatcher(SafeXmlElement element);
 
 		/// <summary>
 		/// Find the closest ancestor (or self) that matches the condition
@@ -422,9 +423,9 @@ namespace BloomHarvester
 		/// <param name="startElement"></param>
 		/// <param name="matcher">A function that returns true if the element matches</param>
 		/// <returns></returns>
-		internal static XmlElement GetClosestMatch(XmlElement startElement, ElementMatcher matcher)
+		internal static SafeXmlElement GetClosestMatch(SafeXmlElement startElement, ElementMatcher matcher)
 		{
-			XmlElement currentElement = startElement;
+			SafeXmlElement currentElement = startElement;
 			while (currentElement != null)
 			{
 				if (matcher(currentElement))
@@ -432,7 +433,7 @@ namespace BloomHarvester
 					return currentElement;
 				}
 
-				currentElement = currentElement.ParentNode as XmlElement;
+				currentElement = currentElement.ParentNode as SafeXmlElement;
 			}
 
 			return null;
@@ -574,7 +575,7 @@ namespace BloomHarvester
 		/// need to modify this method.  The method is Bloom Desktop is not used because it would
 		/// require adding a reference to Geckofx which is neither needed nor wanted here.
 		/// </remarks>
-		private UrlPathString GetImageElementUrl(XmlElement imgOrDivWithBackgroundImage)
+		private UrlPathString GetImageElementUrl(SafeXmlElement imgOrDivWithBackgroundImage)
 		{
 			if (imgOrDivWithBackgroundImage.Name.ToLower() == "img")
 			{
