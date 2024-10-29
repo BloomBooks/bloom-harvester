@@ -22,4 +22,10 @@ cp -r "$bloomDir/output/$buildMode/"* ../lib/dotnet
 echo copying files from \"$bloomDir/output/browser\" to lib/dotnet
 cp -r "$bloomDir/output/browser" ../lib/dotnet
 echo copying files from \"$bloomDir/DistFiles\" to lib/dotnet
-cp -r "$bloomDir/DistFiles" ../lib/dotnet
+cp -r "$bloomDir/DistFiles/fonts" ../lib/dotnet
+cp -r "$bloomDir/DistFiles/ghostscript" ../lib/dotnet
+cp -r "$bloomDir/DistFiles/localization" ../lib/dotnet
+cp -r "$bloomDir/DistFiles/icons" ../lib/dotnet
+cp -r "$bloomDir/DistFiles/ColorProfiles" ../lib/dotnet
+mkdir ../lib/dotnet/DistFiles
+cp -r "$bloomDir/DistFiles/"*.* ../lib/dotnet/DistFiles

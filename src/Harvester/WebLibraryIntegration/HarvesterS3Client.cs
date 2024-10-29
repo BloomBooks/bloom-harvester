@@ -125,8 +125,10 @@ namespace BloomHarvester.WebLibraryIntegration
 				// It seems that the header we insert here eventually becomes a header for a web request, and these allow only ascii.
 				// There may be some way to encode non-ascii filenames to get the effect, if we ever want it again. Or AWS may fix the problem.
 				// If you put setting the filename back in without such a workaround, be sure to test with a non-ascii book title.
-
-				request.CannedACL = S3CannedACL.PublicRead; // Allows any browser to download it.
+				if (_bucketName == "harvester-font-backup")
+					request.CannedACL = S3CannedACL.BucketOwnerRead;
+				else
+					request.CannedACL = S3CannedACL.PublicRead; // Allows any browser to download it.
 
 				try
 				{

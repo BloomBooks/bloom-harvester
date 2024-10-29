@@ -30,6 +30,7 @@ namespace BloomHarvester
 		// harvest --mode=default --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"objectId\":{\"$in\":[\"ze17yO6jIm\",\"v4YABQJLB2\"]}}"
 		// harvest --mode=default --environment=dev --parseDBEnvironment=dev --suppressLogs "--queryWhere={ \"uploader\":{\"$in\":[\"SXsqpDHGKk\"]}}"
 		// harvest --mode=all --environment=dev --parseDBEnvironment=dev  --suppressLogs "--queryWhere={ \"objectId\":\"zBsLInOzWG\"}" --skipUploadBloomDigitalArtifacts
+		// harvest  --mode=ForceAll --environment=prod --suppressLogs --suppressErrors  "--queryWhere={\"objectId\":{\"$in\":[\"b6BbhbMDTL\"]}}"
 		// Note that --mode=forceAll allows harvester to run again regardless of the book's current state.
 		//
 		// updateState --parseDBEnvironment=dev --id="ze17yO6jIm" --newState="InProgress"
@@ -64,7 +65,7 @@ namespace BloomHarvester
 
 			try
 			{
-				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions, SendFontAnalyticsOptions>(args)
+				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions, SendFontAnalyticsOptions, BackupFontsOptions>(args)
 					.WithParsed<HarvesterOptions>(options =>
 					{
 						options.ValidateOptions();
@@ -91,6 +92,11 @@ namespace BloomHarvester
 					{
 						timer.Start();
 						FontAnalytics.SendAnalytics(options);
+					})
+					.WithParsed<BackupFontsOptions>(options =>
+					{
+						timer.Start();
+						FontBackup.BackupFonts(options);
 					})
 					.WithNotParsed(errors =>
 					{
@@ -266,5 +272,10 @@ namespace BloomHarvester
 
 		[Option("forceDownload", Required = false, Default = false,  HelpText = "If true, will force the re-downloading of a book, even if it already exists.")]
 		public bool ForceDownload { get; set; }
+	}
+
+	[Verb("backupFonts", HelpText = "Backup openly available fonts from the current system.")]
+	public class BackupFontsOptions
+	{
 	}
 }
