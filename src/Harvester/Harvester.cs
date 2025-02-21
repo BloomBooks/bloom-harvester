@@ -1258,6 +1258,7 @@ namespace BloomHarvester
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloompub");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
 					string bloomSourceOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomSource");
+					string jsonTextOutputPath = Path.Combine(folderForZipped.FolderPath, $"bookText.json");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
@@ -1276,6 +1277,9 @@ namespace BloomHarvester
 					{
 						bloomArguments += $" \"--bloomSourceOutputPath={bloomSourceOutputPath}\"";
 					}
+
+					if (!_options.SkipUploadJsonText)
+						bloomArguments += $" \"--jsonTextOutputPath={jsonTextOutputPath}\"";
 
 					if (!_options.SkipUploadThumbnails)
 					{
@@ -1404,6 +1408,9 @@ namespace BloomHarvester
 							UploadBloomSourceArtifact(bloomSourceOutputPath, s3FolderLocation);
 						}
 
+						if (!_options.SkipUploadJsonText)
+							UploadJsonArtifact(jsonTextOutputPath, s3FolderLocation);
+
 						if (!_options.SkipUploadThumbnails)
 						{
 							UploadThumbnails(book, thumbnailInfoPath, s3FolderLocation);
@@ -1531,6 +1538,17 @@ namespace BloomHarvester
 		{
 			_logger.TrackEvent("Upload .bloomSource");
 			_s3UploadClient.UploadFile(bloomSourceOutputPath, s3FolderLocation, "no-cache");
+		}
+
+		/// <summary>
+		/// Uploads a .json file to S3
+		/// </summary>
+		/// <param name="jsonOutputPath">The current location of the .json file on this machine</param>
+		/// <param name="s3FolderLocation">The S3 path to upload to</param>
+		private void UploadJsonArtifact(string jsonOutputPath, string s3FolderLocation)
+		{
+			_logger.TrackEvent($"Upload {Path.GetFileName(jsonOutputPath)}");
+			_s3UploadClient.UploadFile(jsonOutputPath, s3FolderLocation, "no-cache");
 		}
 
 		/// <summary>

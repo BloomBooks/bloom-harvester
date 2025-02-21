@@ -166,6 +166,9 @@ namespace BloomHarvester
 		[Option("skipUploadBloomSource", Required = false, Default = false, HelpText = "If true, will prevent the .bloomSource artifact from being created and uploaded.")]
 		public bool SkipUploadBloomSource { get; set; }
 
+		[Option("skipUploadJsonText", Required = false, Default = false, HelpText = "If true, will prevent the bookText.json artifact from being created and uploaded.")]
+		public bool SkipUploadJsonText{ get; set; }
+
 		[Option("skipUploadEPub", Required = false, Default = false, HelpText = "If true, will prevent the .epub artifact from being uploaded.")]
 		public bool SkipUploadEPub { get; set; }
 
@@ -198,6 +201,7 @@ namespace BloomHarvester
 				$"skipUploadBloomDigitalArtifacts: {SkipUploadBloomDigitalArtifacts}\n" +
 				$"skipUploadEPub: {SkipUploadEPub}\n" +
 				$"skipUploadBloomSource: {SkipUploadBloomSource}\n" +
+				$"skipUploadJsonText: {SkipUploadJsonText}\n" +
 				$"skipUploadThumbnails: {SkipUploadThumbnails}\n" +
 				$"skipUpdatePerceptualHash: {SkipUpdatePerceptualHash}\n" +
 				$"skipUpdateMetadata: {SkipUpdateMetadata}\n" +
