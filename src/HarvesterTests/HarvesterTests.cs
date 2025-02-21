@@ -768,7 +768,7 @@ namespace BloomHarvesterTests
 				_fakeParseClient.ReceivedWithAnyArgs(2).UpdateObject("books", "FakeObjectId", "...");
 
 				// This may be too fragile to keep.  It's a pity there isn't a way to get the arguments back to check inside them instead of only exact matching...
-				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\",\"Info: ArtifactSuitability - No ePUB/BloomPub because of missing or invalid font(s)\"],\"phashOfFirstContentImage\":\"0123456789ABCDEF\",\"show\":{\"social\":{\"harvester\":true},\"epub\":{\"langTag\":\"de\",\"harvester\":false},\"bloomReader\":{\"harvester\":false},\"readOnline\":{\"harvester\":false},\"bloomSource\":{\"harvester\":false},\"pdf\":{\"langTag\":\"de\",\"exists\":false},\"shellbook\":{\"harvester\":true}},\"updateSource\":\"bloomHarvester\"}";
+				var updateJson = "{\"harvestState\":\"Failed\",\"harvestLog\":[\"Error: MissingFont - madeUpFontName\",\"Info: ArtifactSuitability - No ePUB/BloomPub because of missing or invalid font(s)\"],\"phashOfFirstContentImage\":\"0123456789ABCDEF\",\"show\":{\"social\":{\"harvester\":true},\"epub\":{\"langTag\":\"de\",\"harvester\":false},\"bloomReader\":{\"harvester\":false},\"readOnline\":{\"harvester\":false},\"bloomSource\":{\"harvester\":false},\"jsonTexts\":{\"harvester\":false},\"pdf\":{\"langTag\":\"de\",\"exists\":false},\"shellbook\":{\"harvester\":true}},\"updateSource\":\"bloomHarvester\"}";
 				_fakeParseClient.Received(1).UpdateObject("books", "FakeObjectId", updateJson);
 			}
 		}

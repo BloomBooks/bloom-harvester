@@ -919,7 +919,7 @@ namespace BloomHarvester
 			if (anyFontErrors)
 				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, "No ePUB/BloomPub because of missing or invalid font(s)"));
 			else if (!isSuccessful)
-				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub/bloomSource because CreateArtifacts failed."));
+				harvestLogEntries.Add(new LogEntry(LogLevel.Info, LogType.ArtifactSuitability, $"No ePUB/BloomPub/bloomSource/jsonTexts because CreateArtifacts failed."));
 
 			if (!_options.SkipUploadEPub || anyFontErrors)
 			{
@@ -938,6 +938,9 @@ namespace BloomHarvester
 			{
 				book.SetHarvesterEvaluation("bloomSource", isSuccessful);
 			}
+
+			if (!_options.SkipUploadJsonTexts)
+				book.SetHarvesterEvaluation("jsonTexts", isSuccessful);
 
 			// harvester never makes pdfs at the moment, but it now sets the langTag
 			// and checks for the existence of the pdf file.
@@ -1258,6 +1261,7 @@ namespace BloomHarvester
 					string zippedBloomDOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloompub");
 					string epubOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.epub");
 					string bloomSourceOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomSource");
+					string jsonTextsOutputPath = Path.Combine(folderForZipped.FolderPath, $"jsonTexts.json");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
@@ -1276,6 +1280,9 @@ namespace BloomHarvester
 					{
 						bloomArguments += $" \"--bloomSourceOutputPath={bloomSourceOutputPath}\"";
 					}
+
+					if (!_options.SkipUploadJsonTexts)
+						bloomArguments += $" \"--jsonTextsOutputPath={jsonTextsOutputPath}\"";
 
 					if (!_options.SkipUploadThumbnails)
 					{
@@ -1404,6 +1411,9 @@ namespace BloomHarvester
 							UploadBloomSourceArtifact(bloomSourceOutputPath, s3FolderLocation);
 						}
 
+						if (!_options.SkipUploadJsonTexts)
+							UploadJsonArtifact(jsonTextsOutputPath, s3FolderLocation);
+
 						if (!_options.SkipUploadThumbnails)
 						{
 							UploadThumbnails(book, thumbnailInfoPath, s3FolderLocation);
@@ -1531,6 +1541,17 @@ namespace BloomHarvester
 		{
 			_logger.TrackEvent("Upload .bloomSource");
 			_s3UploadClient.UploadFile(bloomSourceOutputPath, s3FolderLocation, "no-cache");
+		}
+
+		/// <summary>
+		/// Uploads a .json file to S3
+		/// </summary>
+		/// <param name="jsonOutputPath">The current location of the .json file on this machine</param>
+		/// <param name="s3FolderLocation">The S3 path to upload to</param>
+		private void UploadJsonArtifact(string jsonOutputPath, string s3FolderLocation)
+		{
+			_logger.TrackEvent($"Upload {Path.GetFileName(jsonOutputPath)}");
+			_s3UploadClient.UploadFile(jsonOutputPath, s3FolderLocation, "no-cache");
 		}
 
 		/// <summary>

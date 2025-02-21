@@ -212,6 +212,12 @@ namespace BloomHarvester
 					else
 						Model.Show.bloomSource.harvester = enabled;
 					break;
+				case "jsonTexts":
+					if (Model.Show.jsonTexts == null)
+						Model.Show.jsonTexts = setting;
+					else
+						Model.Show.jsonTexts.harvester = enabled;
+					break;
 				case "readOnline":
 					if (Model.Show.readOnline == null)
 						Model.Show.readOnline = setting;
