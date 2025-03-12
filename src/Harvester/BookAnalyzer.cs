@@ -44,7 +44,9 @@ namespace BloomHarvester
 	class BookAnalyzer : CollectionSettingsReconstructor, IBookAnalyzer
 	{
 		private readonly Version _bloomVersion;
-		private readonly Version _version5_4 = new Version(5, 4);
+		private readonly Version _version5_5 = new Version(5, 5);   // collection settings are uploaded starting with 5.5
+		private readonly Version _version5_4 = new Version(5, 4);	// epub publishing changed in 5.4
+		private readonly Version _version5_3 = new Version(5, 3);	// publishing-settings.json introduced in 5.3
 		private readonly dynamic _publishSettings;
 
 		public BookAnalyzer(string html, string meta, string bookDirectory = "")
@@ -72,7 +74,15 @@ namespace BloomHarvester
 				{
 					var settingsRawText = SIL.IO.RobustFile.ReadAllText(settingsPath);
 					_publishSettings = DynamicJson.Parse(settingsRawText, Encoding.UTF8) as DynamicJson;
-					if (_bloomVersion < _version5_4)
+					if (_bloomVersion < _version5_3)
+					{
+						// publish-settings.json was introduced in Bloom 5.3.  If the upload version
+						// of Bloom is prior to that, then what we have is a stale copy of the settings
+						// file from a source book used to make a derivative.  We really want the default
+						// behavior that occurs when the settings file does not exist.  See BL-14127.
+						_publishSettings = null;
+					}
+					else if (_bloomVersion < _version5_4)
 					{
 						if (!_publishSettings.IsDefined("epub"))
 						{
@@ -113,6 +123,10 @@ namespace BloomHarvester
 
 		public override bool LoadFromUploadedSettings()
 		{
+			var uploadVersion = _dom.GetGeneratorVersion();
+			if (uploadVersion < _version5_5)
+				return false;	// even if it exists, the settings file is stale and useless
+
 			var uploadedCollectionSettingsPath = Path.Combine(_bookDirectory, "collectionFiles", "book.uploadCollectionSettings");
 			if (RobustFile.Exists(uploadedCollectionSettingsPath))
 			{
