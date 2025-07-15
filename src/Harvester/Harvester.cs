@@ -810,35 +810,76 @@ namespace BloomHarvester
 
 		private bool UpdatePerceptualHash(Book book, IBookAnalyzer analyzer, string downloadBookDir, IList<LogEntry> logEntries)
 		{
+			return UpdatePerceptualHash(book, analyzer, downloadBookDir, logEntries, _logger, _issueReporter);
+		}
+
+		internal static bool UpdatePerceptualHash(Book book, IBookAnalyzer analyzer, string downloadBookDir, IList<LogEntry> logEntries,
+			IMonitorLogger logger, IIssueReporter issueReporter)
+		{
 			var isSuccessful = true;
 			var startTime = DateTime.Now;
+			var endTime = startTime;
+
 			string src = null;
 			try
 			{
-				src = analyzer.GetBestPHashImageSource();
-				if (!String.IsNullOrEmpty(src) && src.ToLowerInvariant() != "placeholder.png")
+				var imagePaths = analyzer.GetBestPHashImageSources();
+				if (imagePaths.Count > 0)
 				{
+					src = imagePaths[0];
 					string decodedSrc = HttpUtility.UrlDecode(src);
 					var path = Path.Combine(downloadBookDir, decodedSrc);
 					ulong imageHash = analyzer.ComputeImageHash(path);
 					book.Model.PHashOfFirstContentImage = $"{imageHash:X16}";
+					endTime = DateTime.Now;
+					logger.LogVerbose("Computing PHash=\"{0}\" for {1}/{2} took {3}", book.Model.PHashOfFirstContentImage, book.Model.ObjectId, src, endTime - startTime);
+					ulong allImagesHash = imageHash;
+					var indices = new List<int>();
+					// Note we've already computed the hash for the first image, so we start with index 1.
+					if (imagePaths.Count <= 5)
+					{
+						indices.AddRange(Enumerable.Range(1, imagePaths.Count - 1)); // If there are 5 or fewer images, use all of them
+					}
+					else
+					{
+						// If there are more than 5 images, use the first, second, middle, second to last, and last images
+						indices.Add(1);
+						indices.Add(imagePaths.Count / 2);
+						indices.Add(imagePaths.Count - 2);
+						indices.Add(imagePaths.Count - 1);
+					}
+					foreach (int i in indices)
+					{
+						src = imagePaths[i];
+						decodedSrc = HttpUtility.UrlDecode(src);
+						path = Path.Combine(downloadBookDir, decodedSrc);
+						ulong nextImageHash = analyzer.ComputeImageHash(path);
+						allImagesHash <<= 1; // Shift the previous hash left by 1 bit
+						allImagesHash ^= nextImageHash; // XOR the hashes together
+						var nextTime = DateTime.Now;
+						logger.LogVerbose("Computing PHash=\"{0}\" for {1}/{2} took {3}", nextImageHash, book.Model.ObjectId, src, nextTime - endTime);
+						endTime = nextTime;
+					}
+					book.Model.BookHashFromImages = $"{imagePaths.Count}-{allImagesHash:X16}";
 				}
 				else
 				{
 					book.Model.PHashOfFirstContentImage = null;
+					book.Model.BookHashFromImages = null;
 				}
 			}
 			catch (Exception e)
 			{
 				book.Model.PHashOfFirstContentImage = null;
+				book.Model.BookHashFromImages = null;
 				isSuccessful = false;
 				logEntries.Add(new LogEntry(LogLevel.Error, LogType.PHashError, "Exception thrown. " + e.Message));
-				_logger.LogWarn("Caught exception computing phash for {0}: {1}", src, e);
-				_logger.LogWarn(e.StackTrace);
-				_issueReporter.ReportException(e, $"Caught exception computing phash for {src}", book.Model, exitImmediately: false);
+				logger.LogWarn("Caught exception computing phash for {0}: {1}", src, e);
+				logger.LogWarn(e.StackTrace);
+				issueReporter?.ReportException(e, $"Caught exception computing phash for {src}", book.Model, exitImmediately: false);
 			}
-			var endTime = DateTime.Now;
-			_logger.LogVerbose("Computing PHash=\"{0}\" for {1}/{2} took {3}", book.Model.PHashOfFirstContentImage, book.Model.ObjectId, src, endTime - startTime);
+			var endTime2 = DateTime.Now;
+			logger.LogVerbose("Computing PHash=\"{0}\" for {1}/all images took {2}", book.Model.BookHashFromImages, book.Model.ObjectId, endTime2 - startTime);
 			return isSuccessful;
 		}
 

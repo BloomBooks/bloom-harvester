@@ -65,7 +65,9 @@ namespace BloomHarvester
 
 			try
 			{
-				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions, GenerateProcessedFilesTSVOptions, SendFontAnalyticsOptions, BackupFontsOptions>(args)
+				parser.ParseArguments<HarvesterOptions, UpdateStateInParseOptions, BatchUpdateStateInParseOptions,
+						GenerateProcessedFilesTSVOptions, SendFontAnalyticsOptions, BackupFontsOptions,
+						UpdateHashesInParseOptions>(args)
 					.WithParsed<HarvesterOptions>(options =>
 					{
 						options.ValidateOptions();
@@ -97,6 +99,11 @@ namespace BloomHarvester
 					{
 						timer.Start();
 						FontBackup.BackupFonts(options);
+					})
+					.WithParsed<UpdateHashesInParseOptions>(options =>
+					{
+						timer.Start();
+						BookHashUpdater.UpdateHashes(options);
 					})
 					.WithNotParsed(errors =>
 					{
@@ -283,5 +290,21 @@ namespace BloomHarvester
 	{
 		[Option("verbose", Required = false, Default = false, HelpText = "If true, will cause each filename and suitability to be written to the console as it is checked for backup.")]
 		public bool Verbose { get; set; }
+	}
+
+	[Verb("updateHashes", HelpText = "Update the hash fields in Parse (phashOfFirstContentImage and bookHashFromImages)")]
+	public class UpdateHashesInParseOptions
+	{
+		[Option("environment", Required = false, Default = EnvironmentSetting.Default, HelpText = "Sets the environment to read/write from Parse DB. Valid values are Default, Dev, Test, or Prod.")]
+		public EnvironmentSetting Environment { get; set; }
+
+		[Option("queryWhere", Required = true, Default = "", HelpText = "If specified, adds a WHERE clause to the request query when retrieving the list of books to process. This should be in the JSON format used by Parse REST API to pass WHERE clauses. See https://docs.parseplatform.org/rest/guide/#query-constraints")]
+		public string QueryWhere { get; set; }
+
+		[Option("dryRun", Required = false, Default = false, HelpText = "If specified, will print out what it will try to do, but will not actually update the Parse database.")]
+		public bool DryRun { get; set; }
+
+		[Option("forceDownload", Required = false, Default = false, HelpText = "If true, will force the re-downloading of a book, even if it already exists.")]
+		public bool ForceDownload { get; set; }
 	}
 }

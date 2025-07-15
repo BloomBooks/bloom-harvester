@@ -32,7 +32,7 @@ namespace BloomHarvester
 		int GetBookComputedLevel();
 		bool BookHasCustomLicense { get; }
 
-		string GetBestPHashImageSource();
+		List<string> GetBestPHashImageSources();
 		ulong ComputeImageHash(string path);
 
 		string GetBookshelf();
@@ -555,61 +555,75 @@ namespace BloomHarvester
 			}
 		}
 
-		// Note that newer books (produced by Bloom 6.2 and later) store img elements under a div.bloom-canvas.
-		// Older books store img elements under a div.bloom-imageContainer.
-		const string contentBloomCanvasPath = "//div[contains(@class,'bloom-page') and contains(@class,'numberedPage')]//div[contains(@class,'bloom-canvas')]";
-		const string contentImageContainerPath = "//div[contains(@class,'bloom-page') and contains(@class,'numberedPage')]//div[contains(@class,'bloom-imageContainer')]";
-		const string coverBloomCanvasPath = "//div[contains(@class,'bloom-page') and @data-xmatter-page='frontCover']//div[contains(@class,'bloom-canvas')]";
-		const string coverImageContainerPath = "//div[contains(@class,'bloom-page') and @data-xmatter-page='frontCover']//div[contains(@class,'bloom-imageContainer')]";
+		// Note that newer books (produced by Bloom 6.2 and later) store primary img elements under a
+		// div.bloom-canvas, but overlay images under a div.bloom-imageContainer.
+		// Older books store all img elements under a div.bloom-imageContainer.
+		const string contentPagePath =
+			"//div[contains(@class,'bloom-page') and contains(@class,'numberedPage') and not(@data-activity) and not(@data-tool-id='game')]";
+		const string bloomCanvasPath =
+			"//div[contains(@class,'bloom-canvas')]";
+		const string imageContainerPath =
+			"//div[contains(@class,'bloom-imageContainer')]";
+		const string frontCoverPath =
+			"//div[contains(@class,'bloom-page') and @data-xmatter-page='frontCover']";
 
 		/// <summary>
-		/// Finds the image to use when computing the perceptual hash for the book.
+		/// Finds the images to use when computing the perceptual hash for the book.
 		/// </summary>
 		/// <remarks>
 		/// Precondition: Assumes that pages were written to the HTML in the order of their page number
 		/// </remarks>
-		public string GetBestPHashImageSource()
+		public List<string> GetBestPHashImageSources()
 		{
-			// Find the first picture on a content page
-			var imageElements = _dom.SafeSelectNodes($"{contentBloomCanvasPath}/img");
-			if (imageElements.Length == 0)
-				imageElements = _dom.SafeSelectNodes($"{contentImageContainerPath}/img");
-			for (int i = 0; i < imageElements.Length; ++i)
+			List<string> imagePaths = new List<string>();
+			// Find the pictures on content pages other than games.  This may include overlay images as
+			// well as background images.
+			var allContentImages = _dom.SafeSelectNodes($"{contentPagePath}{bloomCanvasPath}/img|{contentPagePath}{imageContainerPath}/img");
+			for (int i = 0; i < allContentImages.Length; ++i)
 			{
-				var src = imageElements[i].GetAttribute("src");
+				var src = allContentImages[i].GetAttribute("src");
 				if (!String.IsNullOrEmpty(src) && src != "placeHolder.png")
-					return src;
+					imagePaths.Add(src);
 			}
-			var fallbackImgWrappers = _dom.SafeSelectNodes(contentBloomCanvasPath);
+			if (imagePaths.Count > 0)
+				return imagePaths;
+
+			var fallbackImgWrappers = _dom.SafeSelectNodes($"{contentPagePath}{bloomCanvasPath}");
 			if (fallbackImgWrappers.Length == 0)
-				fallbackImgWrappers = _dom.SafeSelectNodes(contentImageContainerPath);
+				fallbackImgWrappers = _dom.SafeSelectNodes($"{contentPagePath}{imageContainerPath}");
 			for (int i = 0; i < fallbackImgWrappers.Length; ++i)
 			{
 				var fallbackUrl = GetImageElementUrl(fallbackImgWrappers[i] as SafeXmlElement)?.UrlEncoded;
 				if (!String.IsNullOrEmpty(fallbackUrl) && fallbackUrl != "placeHolder.png")
-					return fallbackUrl;
+					imagePaths.Add(fallbackUrl);
 			}
+			if (imagePaths.Count > 0)
+				return imagePaths;
+
 			// No content page images found.  Try the cover page
-			var coverImages = _dom.SafeSelectNodes($"{coverBloomCanvasPath}/img");
+			var coverImages = _dom.SafeSelectNodes($"{frontCoverPath}{bloomCanvasPath}/img");
 			if (coverImages.Length == 0)
-				coverImages = _dom.SafeSelectNodes($"{coverImageContainerPath}/img");
+				coverImages = _dom.SafeSelectNodes($"{frontCoverPath}{imageContainerPath}/img");
 			for (int i = 0; i < coverImages.Length; ++i)
 			{
 				var src = coverImages[i].GetAttribute("src");
 				if (!String.IsNullOrEmpty(src) && src != "placeHolder.png")
-					return src;
+					imagePaths.Add(src);
 			}
-			var coverFallbackImgWrappers = _dom.SafeSelectNodes(coverBloomCanvasPath);
+			if (imagePaths.Count > 0)
+				return imagePaths;
+
+			var coverFallbackImgWrappers = _dom.SafeSelectNodes($"{frontCoverPath}{bloomCanvasPath}");
 			if (coverFallbackImgWrappers == null)
-				coverFallbackImgWrappers = _dom.SafeSelectNodes(coverImageContainerPath);
+				coverFallbackImgWrappers = _dom.SafeSelectNodes($"{frontCoverPath}{imageContainerPath}");
 			for (int i = 0; i < coverFallbackImgWrappers.Length; ++i)
 			{
 				var fallbackUrl = GetImageElementUrl(coverFallbackImgWrappers[i] as SafeXmlElement)?.UrlEncoded;
 				if (!String.IsNullOrEmpty(fallbackUrl) && fallbackUrl != "placeHolder.png")
-					return fallbackUrl;
+					imagePaths.Add(fallbackUrl);
 			}
-			// Nothing on the cover page either. Give up.
-			return null;
+			// If nothing on the cover page either, give up.
+			return imagePaths;
 		}
 
 		/// <summary>

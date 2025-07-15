@@ -442,7 +442,13 @@ namespace BloomHarvesterTests
 
 			var harvester = Substitute.ForPartsOf<Harvester>(options, EnvironmentSetting.Local, identifier, _fakeParseClient, _fakeBloomS3Client, _fakeS3UploadClient, _fakeDownload, _fakeIssueReporter, _logger, _fakeBloomCli, _fakeFontChecker, _fakeDiskSpaceManager, logEnvironment, _fakeFileIO);
 
-			harvester.Configure().GetAnalyzer(default).ReturnsForAnyArgs(bookAnalyzer ?? Substitute.For<IBookAnalyzer>());
+			if (bookAnalyzer == null)
+			{
+				// Setup a mock which returns the parameters for the normal case
+				bookAnalyzer = Substitute.For<IBookAnalyzer>();
+				bookAnalyzer.Configure().GetBestPHashImageSources().Returns( new List<string>() );
+			}
+			harvester.Configure().GetAnalyzer(default).ReturnsForAnyArgs(bookAnalyzer);
 
 			return harvester;
 		}
@@ -704,7 +710,7 @@ namespace BloomHarvesterTests
 
 			var fakeAnalyzer = Substitute.For<IBookAnalyzer>();
 			fakeAnalyzer.Language1Code.Returns("de");
-			fakeAnalyzer.Configure().GetBestPHashImageSource().Returns("test.png");	// any filename is okay except placeholder.png
+			fakeAnalyzer.Configure().GetBestPHashImageSources().Returns(new List<string>() { "test.png" }); // any filename is okay except placeholder.png
 			fakeAnalyzer.Configure().ComputeImageHash(default).ReturnsForAnyArgs(args => (ulong)0x123456789ABCDEF);
 			var fakeFileIO = Substitute.For<IFileIO>();
 
@@ -1248,6 +1254,7 @@ namespace BloomHarvesterTests
 			var options = GetHarvesterOptionsForProcessOneBookTests();
 			var fakeAnalyzer = Substitute.For<IBookAnalyzer>();
 			fakeAnalyzer.Language1Code.Returns("de");
+			fakeAnalyzer.Configure().GetBestPHashImageSources().Returns(new List<string>());
 
 			using (var harvester = GetSubstituteHarvester(options, bookAnalyzer: fakeAnalyzer))
 			{
@@ -1301,6 +1308,8 @@ namespace BloomHarvesterTests
 			// And that's how the code knows we should not set (or should unset) the langTags.
 			//var fakeAnalyzer = Substitute.For<IBookAnalyzer>();
 			//fakeAnalyzer.Language1Code.Returns("de");
+			//fakeAnalyzer.Configure().GetBestPHashImageSources().Returns(new List<string>());
+
 
 			using (var harvester = GetSubstituteHarvester(options/*, bookAnalyzer: fakeAnalyzer*/))
 			{

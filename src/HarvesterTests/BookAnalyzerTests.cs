@@ -715,6 +715,30 @@ $@"<html>
 			}
 		}
 
+
+		[Test]
+		public void GetBestPHashImageSources_Handles_Overlays()
+		{
+			var analyzer = new BookAnalyzer(kPagesWithOverlayImages, GetMetaData());
+
+			// SUT
+			var images = analyzer.GetBestPHashImageSources();
+
+			Assert.That(images, Has.Count.EqualTo(5), "There should be five images in the book");
+			Assert.That(images[0], Is.EqualTo("Vacation%202010%20386.jpg"), "First image should be Vacation 2010 386.jpg");
+		}
+		[Test]
+		public void GetBestPHashImageSources_Handles_CoverImageOnly()
+		{
+			var analyzer = new BookAnalyzer(kPagesWithOnlyCoverImage, GetMetaData());
+
+			// SUT
+			var images = analyzer.GetBestPHashImageSources();
+
+			Assert.That(images, Has.Count.EqualTo(1), "There should be only one image in the book");
+			Assert.That(images[0], Is.EqualTo("100_1165.jpg"), "Image should be 100_1165.jpg");
+		}
+
 		private const string kHtmlUnmodifiedPages = @"<html>
   <head>
     <meta charset='UTF-8' />
@@ -825,6 +849,160 @@ $@"<html>
                       <p>This is a test.</p>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+";
+
+    private string kPagesWithOverlayImages = @"<html>
+  <head>
+    <meta charset='UTF-8' />
+  </head>
+  <body>
+    <div class='bloom-page cover coverColor bloom-frontMatter frontCover outsideFrontCover darkCoverColor side-right USComicPortrait' data-page='required singleton' data-export='front-matter-cover' data-xmatter-page='frontCover' id='94adfac3-c563-432a-bd23-5c0a91648fce' lang='es' data-page-number=''>
+      <div class='marginBox'>
+        <div class='bloom-translationGroup bookTitle' data-default-languages='V,N1' data-visibility-variable='cover-title-LN-show'>
+          <div class='bloom-editable bloom-nodefaultstylerule Title-On-Cover-style bloom-padForOverflow bloom-visibility-code-on bloom-content1 bloom-contentFirst' lang='en' contenteditable='true' data-book='bookTitle' style='padding-bottom: 3px;'>
+            <p>Paper Comic</p>
+          </div>
+        </div>
+        <div class='bloom-canvas' data-imgsizebasedon='545,735'>
+          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add('bloom-imageLoadError')' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
+          <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement' data-default-languages='auto'>
+            <div class='bloom-editable ImageDescriptionEdit-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='coverImageDescription' />
+            <div class='bloom-editable ImageDescriptionEdit-style bloom-contentNational1' lang='es' contenteditable='true' data-book='coverImageDescription' />
+          </div>
+        </div>
+        <div class='bottomBlock'>
+          <div class='bottomTextContent'>
+            <div class='creditsRow' data-hint='You may use this space for author/illustrator, or anything else.'>
+              <div class='bloom-translationGroup' data-default-languages='[CoverCreditsLanguage] DEFAULT:V'>
+                <div class='bloom-editable smallCoverCredits Cover-Default-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='smallCoverCredits'>
+                  <p>Dr Steve</p>
+                </div>
+              </div>
+            </div>
+            <div class='bottomRow' data-have-topic='false'>
+              <div class='coverBottomLangName Cover-Default-style' data-derived='languagesOfBook' lang='es'>English</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class='bloom-page numberedPage customPage' id='5a72f533-cd59-4e8d-9da5-2fa052144621' data-page-number='1' lang='en' data-tool-id='overlay'>
+      <div class='marginBox'>
+        <div class='split-pane-component-inner'>
+          <div title='' class='bloom-canvas bloom-has-canvas-element' style=''>
+            <svg version='1.1' xmlns='http://www.w3.org/2000/svg' data-lang='en'></svg>
+            <img class='bloom-imageObjectFit-cover' src='placeHolder.png' />
+            <div class='bloom-canvas-element' style='height: 341.887px; left: 10px; top: 20px; width: 307.904px;' data-bubble='{`version`:`1.0`,`style`:`none`,`tails`:[],`level`:2,`backgroundColors`:[`transparent`],`shadowOffset`:0}'>
+              <div tabindex='0' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='Vacation%202010%20386.jpg' />
+              </div>
+            </div>
+            <div class='bloom-canvas-element' style='height: 431.793px; left: 23px; top: 369.203px; width: 576.954px;' data-bubble='{`version`:`1.0`,`style`:`none`,`tails`:[],`level`:3,`backgroundColors`:[`transparent`],`shadowOffset`:0}'>
+              <div tabindex='0' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='Vacation%202010%20481.jpg' />
+              </div>
+            </div>
+            <div class='bloom-canvas-element' style='height: 340.837px; left: 321.023px; top: 20px; width: 278.977px;' data-bubble='{`version`:`1.0`,`style`:`none`,`tails`:[],`level`:4,`backgroundColors`:[`transparent`],`shadowOffset`:0}'>
+              <div tabindex='0' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='Vacation%202010%20410.jpg' />
+              </div>
+            </div>
+            <div class='bloom-canvas-element' style='left: 190px; top: 890px; width: 290px; height: 30px;' data-bubble='{`version`:`1.0`,`style`:`caption`,`tails`:[],`level`:5,`backgroundColors`:[`#FFFFFF`,`#DFB28B`],`shadowOffset`:5}'>
+              <div class='bloom-translationGroup bloom-leadingElement' data-default-languages='V' style='font-size: 16px;'>
+                <div class='bloom-editable Bubble-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' tabindex='0' spellcheck='false' role='textbox' aria-label='false' data-bubble-alternate='{`lang`:`en`,`style`:`left: 190px; top: 890px; width: 290px; height: 30px;`,`tails`:[]}' data-languagetipcontent='English'>
+                  <p>This is a test!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class='bloom-page numberedPage customPage' id='5592ae39-52f3-4e7a-9a88-4ec1b4273230' data-page-number='2' lang='en' data-tool-id='overlay'>
+      <div class='marginBox'>
+        <div class='split-pane-component-inner'>
+          <div title='' class='bloom-canvas bloom-has-canvas-element' style=''>
+            <svg version='1.1' xmlns='http://www.w3.org/2000/svg' data-lang='en'></svg>
+            <img class='bloom-imageObjectFit-cover' src='placeHolder.png' />
+            <div class='bloom-canvas-element' style='height: 458.234px; left: 10px; top: 20px; width: 611.324px;' data-bubble='{`version`:`1.0`,`style`:`none`,`tails`:[],`level`:2,`backgroundColors`:[`transparent`],`shadowOffset`:0}'>
+              <div tabindex='0' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='100_2556.jpg' alt='' />
+              </div>
+            </div>
+            <div class='bloom-canvas-element' style='height: 449.839px; left: 20px; top: 480px; width: 600.121px;' data-bubble='{`version`:`1.0`,`style`:`none`,`tails`:[],`level`:3,`backgroundColors`:[`transparent`],`shadowOffset`:0}'>
+              <div tabindex='0' class='bloom-imageContainer bloom-leadingElement'>
+                <img src='100_1250.jpg' alt='' />
+              </div>
+            </div>
+            <div class='bloom-canvas-element' style='left: 230px; top: 930px; width: 140px; height: 30px;' data-bubble='{`version`:`1.0`,`style`:`caption`,`tails`:[],`level`:4,`backgroundColors`:[`#FFFFFF`,`#DFB28B`],`shadowOffset`:5}' data-bloom-active='true'>
+              <div class='bloom-translationGroup bloom-leadingElement' data-default-languages='V' style='font-size: 16px;'>
+                <div class='bloom-editable Bubble-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' tabindex='0' spellcheck='false' role='textbox' aria-label='false' data-bubble-alternate='{`lang`:`en`,`style`:`left: 230px; top: 930px; width: 140px; height: 30px;`,`tails`:[]}' data-languagetipcontent='English'>
+                  <p>Two more pictures</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+";
+
+		private string kPagesWithOnlyCoverImage = @"<html>
+  <head>
+    <meta charset='UTF-8' />
+  </head>
+  <body>
+    <div class='bloom-page cover coverColor bloom-frontMatter frontCover outsideFrontCover darkCoverColor side-right USComicPortrait' data-page='required singleton' data-export='front-matter-cover' data-xmatter-page='frontCover' id='94adfac3-c563-432a-bd23-5c0a91648fce' lang='es' data-page-number=''>
+      <div class='marginBox'>
+        <div class='bloom-translationGroup bookTitle' data-default-languages='V,N1' data-visibility-variable='cover-title-LN-show'>
+          <div class='bloom-editable bloom-nodefaultstylerule Title-On-Cover-style bloom-padForOverflow bloom-visibility-code-on bloom-content1 bloom-contentFirst' lang='en' contenteditable='true' data-book='bookTitle' style='padding-bottom: 3px;'>
+            <p>Paper Comic</p>
+          </div>
+        </div>
+        <div class='bloom-canvas' data-imgsizebasedon='545,735'>
+          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add('bloom-imageLoadError')' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
+          <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement' data-default-languages='auto'>
+            <div class='bloom-editable ImageDescriptionEdit-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='coverImageDescription' />
+            <div class='bloom-editable ImageDescriptionEdit-style bloom-contentNational1' lang='es' contenteditable='true' data-book='coverImageDescription' />
+          </div>
+        </div>
+        <div class='bottomBlock'>
+          <div class='bottomTextContent'>
+            <div class='creditsRow' data-hint='You may use this space for author/illustrator, or anything else.'>
+              <div class='bloom-translationGroup' data-default-languages='[CoverCreditsLanguage] DEFAULT:V'>
+                <div class='bloom-editable smallCoverCredits Cover-Default-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='smallCoverCredits'>
+                  <p>Dr Steve</p>
+                </div>
+              </div>
+            </div>
+            <div class='bottomRow' data-have-topic='false'>
+              <div class='coverBottomLangName Cover-Default-style' data-derived='languagesOfBook' lang='es'>English</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class='bloom-page numberedPage customPage' id='5a72f533-cd59-4e8d-9da5-2fa052144621' data-page-number='1' lang='en' data-tool-id='overlay'>
+      <div class='marginBox'>
+        <div class='split-pane-component-inner'>
+          <div title='' class='bloom-canvas bloom-has-canvas-element' style=''>
+            <svg version='1.1' xmlns='http://www.w3.org/2000/svg' data-lang='en'></svg>
+            <img class='bloom-imageObjectFit-cover' src='placeHolder.png' />
+            <div class='bloom-canvas-element' style='left: 190px; top: 890px; width: 290px; height: 30px;' data-bubble='{`version`:`1.0`,`style`:`caption`,`tails`:[],`level`:5,`backgroundColors`:[`#FFFFFF`,`#DFB28B`],`shadowOffset`:5}'>
+              <div class='bloom-translationGroup bloom-leadingElement' data-default-languages='V' style='font-size: 16px;'>
+                <div class='bloom-editable Bubble-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' tabindex='0' spellcheck='false' role='textbox' aria-label='false' data-bubble-alternate='{`lang`:`en`,`style`:`left: 190px; top: 890px; width: 290px; height: 30px;`,`tails`:[]}' data-languagetipcontent='English'>
+                  <p>This is a test!</p>
                 </div>
               </div>
             </div>

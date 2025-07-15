@@ -118,6 +118,10 @@ namespace BloomHarvester.Parse.Model
 		[JsonProperty("phashOfFirstContentImage")]	// Should be phash, not pHash
 		public string PHashOfFirstContentImage { get; set; }
 
+		[JsonProperty("bookHashFromImages")]
+		public string BookHashFromImages { get; set; }
+
+
 		[JsonProperty("brandingProjectName")] // Can't change to subscriptionDescriptor. It must match the field in the parse database.
 		public string SubscriptionDescriptor { get; set; }
 
