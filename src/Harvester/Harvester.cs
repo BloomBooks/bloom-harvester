@@ -619,19 +619,9 @@ namespace BloomHarvester
 				_pdfExists = CheckIfPdfExists(decodedUrl, _parseDBEnvironment, _bloomS3Client);
 
 				// Process the book
-				List<LogEntry> harvestLogEntries = CheckForMissingOrInvalidFontErrors(collectionBookDir, book);
-				bool anyFontErrors = harvestLogEntries.Any();
-				isSuccessful &= !anyFontErrors;
-				if (anyFontErrors)
-				{
-					_options.SkipUploadBloomDigitalArtifacts = true;
-					_options.SkipUploadEPub = true;
-				}
-
-				// More processing
+				var harvestLogEntries = new List<LogEntry>();
 				var warnings = book.FindBookWarnings();
 				harvestLogEntries.AddRange(warnings);
-
 				if (!_options.ReadOnly)
 				{
 					var analyzer = GetAnalyzer(collectionBookDir);
@@ -646,7 +636,7 @@ namespace BloomHarvester
 						isSuccessful &= UpdateHashes(book, analyzer, collectionBookDir, harvestLogEntries);
 
 					isSuccessful &= CreateArtifacts(decodedUrl, collectionBookDir, collectionFilePath, book,
-						harvestLogEntries);
+						harvestLogEntries, out bool anyFontErrors);
 					// If not successful, update artifact suitability to say all false. (BL-8413)
 					UpdateSuitabilityOfArtifacts(book, analyzer, isSuccessful, anyFontErrors, harvestLogEntries);
 
@@ -1215,24 +1205,9 @@ namespace BloomHarvester
 			return urlWithoutTitle;
 		}
 
-		// Returns list of log entries for missing fonts
-		internal List<LogEntry> CheckForMissingOrInvalidFontErrors(string bookPath, Book book)
+		private void ReportMissingAndInvalidFonts(Book book, List<LogEntry> harvestLogEntries,
+			List<string> missingFontsForCurrBook, List<string> invalidFontsForCurrBook)
 		{
-			var harvestLogEntries = new List<LogEntry>();
-
-
-			if (!_fontChecker.CheckFonts(bookPath))
-			{
-				// We now require successful determination of which fonts are missing.
-				// Since we abort processing a book if any fonts are missing,
-				// we don't want to proceed blindly if we're not sure if the book is missing any fonts.
-				harvestLogEntries.Add(new LogEntry(LogLevel.Error, LogType.GetFontsError, "Error calling getFonts"));
-				_issueReporter.ReportError("Error calling getMissingFonts", "", "", book.Model);
-				return harvestLogEntries;
-			}
-			var missingFontsForCurrBook = _fontChecker.GetMissingFonts();
-			var invalidFontsForCurrBook = _fontChecker.GetInvalidFonts();
-
 			bool areAnyFontsMissing = missingFontsForCurrBook.Any();
 			if (areAnyFontsMissing)
 			{
@@ -1276,16 +1251,16 @@ namespace BloomHarvester
 					}
 				}
 			}
-
-			return harvestLogEntries;
 		}
 
-		private bool CreateArtifacts(string downloadUrl, string collectionBookDir, string collectionFilePath, Book book, List<LogEntry> harvestLogEntries)
+		private bool CreateArtifacts(string downloadUrl, string collectionBookDir, string collectionFilePath, Book book,
+			List<LogEntry> harvestLogEntries, out bool anyFontErrors)
 		{
 			Debug.Assert(book != null, "CreateArtifacts(): book expected to be non-null");
 			Debug.Assert(harvestLogEntries != null, "CreateArtifacts(): harvestLogEntries expected to be non-null");
 
 			bool success = true;
+			anyFontErrors = false;
 
 			using (var folderForUnzipped = new TemporaryFolder(this.GetBloomDigitalArtifactsPath()))
 			{
@@ -1304,6 +1279,7 @@ namespace BloomHarvester
 					string bloomSourceOutputPath = Path.Combine(folderForZipped.FolderPath, $"{bookTitleFileBasename}.bloomSource");
 					string jsonTextsOutputPath = Path.Combine(folderForZipped.FolderPath, $"jsonTexts.json");
 					string thumbnailInfoPath = Path.Combine(folderForZipped.FolderPath, "thumbInfo.txt");
+					string problemFontsPath = Path.Combine(folderForZipped.FolderPath, "problemFonts.txt");
 
 					string bloomArguments = $"createArtifacts \"--bookPath={collectionBookDir}\" \"--collectionPath={collectionFilePath}\"";
 					if (!_options.SkipUploadBloomDigitalArtifacts || !_options.SkipUpdateMetadata)
@@ -1329,6 +1305,8 @@ namespace BloomHarvester
 					{
 						bloomArguments += $" \"--thumbnailOutputInfoPath={thumbnailInfoPath}\"";
 					}
+
+					bloomArguments += $" \"--problemFontsPath={problemFontsPath}\"";
 
 					// Ensure that font analytics are marked as "test_only" if any environment setting is not effectively "Production"
 					if (_options.Environment != EnvironmentSetting.Prod ||
@@ -1369,7 +1347,33 @@ namespace BloomHarvester
 						{
 							_logger.LogVerbose($"CreateArtifacts finished successfully in {bloomCliStopwatch.Elapsed.TotalSeconds:0.0} seconds.");
 						}
-						else
+						else if ((bloomExitCode & (int)Bloom.CLI.CreateArtifactsExitCode.FontProblems) != 0)
+						{
+							// The problemFontsPath file should exist if there were any font problems.
+							if (RobustFile.Exists(problemFontsPath))
+							{
+								// If there were font problems, we need to report this and record it in the harvester log.
+								// If the exit code is only CreateArtifactsExitCode.FontProblems, then we can proceed with
+								// the upload apart from the bloomPub and ePUB artifacts.
+								var problemFonts = RobustFile.ReadAllLines(problemFontsPath);
+								var invalidFonts = new List<string>();
+								var missingFonts = new List<string>();
+								foreach (var problemFont in problemFonts)
+								{
+									if (problemFont.StartsWith("invalid font - ") || problemFont.StartsWith("illegal font - "))
+										invalidFonts.Add(problemFont.Substring(15));
+									else if (problemFont.StartsWith("missing font - "))
+										missingFonts.Add(problemFont.Substring(15));
+									else
+										_logger.LogWarn($"Unexpected font problem entry: {problemFont}");
+								}
+								ReportMissingAndInvalidFonts(book, harvestLogEntries, missingFonts, invalidFonts);
+								_options.SkipUploadBloomDigitalArtifacts = true;
+								_options.SkipUploadEPub = true;
+								anyFontErrors = true;
+							}
+						}
+						else if (bloomExitCode != (int)Bloom.CLI.CreateArtifactsExitCode.FontProblems)
 						{
 							success = false;
 							IEnumerable<string> errors = Bloom.CLI.CreateArtifactsCommand.GetErrorsFromExitCode(bloomExitCode) ?? Enumerable.Empty<string>();
@@ -1468,7 +1472,7 @@ namespace BloomHarvester
 				}
 			}
 
-			return success;
+			return success && !anyFontErrors;
 		}
 
 		/// <summary>
