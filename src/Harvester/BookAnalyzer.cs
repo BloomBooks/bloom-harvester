@@ -30,7 +30,7 @@ namespace BloomHarvester
 		bool IsEpubSuitable(List<LogEntry> harvestLogEntries);
 
 		int GetBookComputedLevel();
-		bool BookHasCustomLicense { get; }
+		bool BookHasRestrictiveLicense { get; }
 
 		List<string> GetBestPHashImageSources();
 		ulong ComputeImageHash(string path);
@@ -56,7 +56,7 @@ namespace BloomHarvester
 			if (metaObj.IsDefined("license"))
 			{
 				var license = metaObj["license"] as string;
-				BookHasCustomLicense = license == "custom";
+				BookHasRestrictiveLicense = license == "custom" || license == "ask";
 			}
 			// Extract the Bloom version that created/uploaded the book.
 			_bloomVersion = _dom.GetGeneratorVersion();
@@ -198,7 +198,7 @@ namespace BloomHarvester
 			return result;
 		}
 
-		public bool BookHasCustomLicense { get; private set; }
+		public bool BookHasRestrictiveLicense { get; private set; }
 
 		/// <summary>
 		/// For now, we assume that generated Bloom Reader books are always suitable.

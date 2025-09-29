@@ -977,7 +977,9 @@ namespace BloomHarvester
 			if (!_options.SkipUploadEPub || anyFontErrors)
 			{
 				book.SetValueForShowTypeKey("epub", "langTag", analyzer?.Language1Code);
-				book.SetHarvesterEvaluation("epub", isSuccessful && _ePubExists && _ePubSuitable);
+				var reason = (isSuccessful && _ePubExists && !_ePubSuitable) ?
+					"harvest-reason-epub-deemed-unsuitable" : null;
+				book.SetHarvesterEvaluation("epub", isSuccessful && _ePubExists && _ePubSuitable, reason);
 			}
 
 			if (!_options.SkipUploadBloomDigitalArtifacts || anyFontErrors)
@@ -1006,9 +1008,10 @@ namespace BloomHarvester
 			}
 
 			// harvester checks the license to evaluate "shellbook", ignoring any success in generating artifacts
-			// (If we don't have an analyzer, we can't tell if the book has a custom license or not. But something
+			// (If we don't have an analyzer, we can't tell if the book has a restrictive license or not. But something
 			// has gone wrong if we don't have an analyzer, so make the most negative assumption.)
-			book.SetHarvesterEvaluation("shellbook", !(analyzer?.BookHasCustomLicense ?? true));
+			book.SetHarvesterEvaluation("shellbook", !(analyzer?.BookHasRestrictiveLicense ?? true),
+				"harvest-reason-copyright-license-restriction");
 		}
 
 		private bool ShouldProcessBook(BookModel book, out string reason)

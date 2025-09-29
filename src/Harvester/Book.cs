@@ -177,7 +177,7 @@ namespace BloomHarvester
 		/// Set the harvester evaluation for the given artifact.
 		/// Call this method only if harvester created and uploaded the given artifact.
 		/// </summary>
-		internal void SetHarvesterEvaluation(string artifact, bool enabled)
+		internal void SetHarvesterEvaluation(string artifact, bool enabled, string hideReasonId = null)
 		{
 			if (Model.Show == null)
 			{
@@ -193,48 +193,80 @@ namespace BloomHarvester
 						Model.Show.epub = setting;
 					else
 						Model.Show.epub.harvester = enabled;
+					if (Model.Show.epub.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.epub.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.epub.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.epub.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "pdf":
 					if (Model.Show.pdf == null)
 						Model.Show.pdf = setting;
 					else
 						Model.Show.pdf.harvester = enabled;
+					if (Model.Show.pdf.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.pdf.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.pdf.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.pdf.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "bloomReader":
 					if (Model.Show.bloomReader == null)
 						Model.Show.bloomReader = setting;
 					else
 						Model.Show.bloomReader.harvester = enabled;
+					if (Model.Show.bloomReader.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.bloomReader.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.bloomReader.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.bloomReader.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "bloomSource":
 					if (Model.Show.bloomSource == null)
 						Model.Show.bloomSource = setting;
 					else
 						Model.Show.bloomSource.harvester = enabled;
+					if (Model.Show.bloomSource.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.bloomSource.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.bloomSource.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.bloomSource.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "jsonTexts":
 					if (Model.Show.jsonTexts == null)
 						Model.Show.jsonTexts = setting;
 					else
 						Model.Show.jsonTexts.harvester = enabled;
+					if (Model.Show.jsonTexts.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.jsonTexts.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.jsonTexts.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.jsonTexts.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "readOnline":
 					if (Model.Show.readOnline == null)
 						Model.Show.readOnline = setting;
 					else
 						Model.Show.readOnline.harvester = enabled;
+					if (Model.Show.readOnline.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.readOnline.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.readOnline.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.readOnline.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "social":
 					if (Model.Show.social == null)
 						Model.Show.social = setting;
 					else
 						Model.Show.social.harvester = enabled;
+					if (Model.Show.social.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.social.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.social.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.social.harvesterReasonToHideId.Parent.Remove();
 					break;
 				case "shellbook":
 					if (Model.Show.shellbook == null)
 						Model.Show.shellbook = setting;
 					else
 						Model.Show.shellbook.harvester = enabled;
+					if (Model.Show.shellbook.harvester == false && !string.IsNullOrEmpty(hideReasonId))
+						Model.Show.shellbook.harvesterReasonToHideId = hideReasonId;
+					else if (Model.Show.shellbook.SelectToken("harvesterReasonToHideId") != null)
+						Model.Show.shellbook.harvesterReasonToHideId.Parent.Remove();
 					break;
 				default:
 					throw new ArgumentException($"SetHarvesterEvaluation(): Unrecognized artifact type \"{artifact}\"");
