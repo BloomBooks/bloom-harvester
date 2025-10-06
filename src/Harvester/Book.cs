@@ -175,70 +175,32 @@ namespace BloomHarvester
 
 		/// <summary>
 		/// Set the harvester evaluation for the given artifact.
-		/// Call this method only if harvester created and uploaded the given artifact.
+		/// Call this method only if harvester created and possibly uploaded the given artifact.
 		/// </summary>
-		internal void SetHarvesterEvaluation(string artifact, bool enabled)
+		internal void SetHarvesterEvaluation(string artifact, bool enabled, string hideReasonId = null)
 		{
+			var validArtifacts = new[] { "epub", "pdf", "bloomReader", "bloomSource", "jsonTexts", "readOnline", "social", "shellbook" };
+			if (!validArtifacts.Contains(artifact))
+			{
+				throw new ArgumentException($"SetHarvesterEvaluation(): Unrecognized artifact type \"{artifact}\"");
+			}
 			if (Model.Show == null)
 			{
-				var jsonString = $"{{ \"{artifact}\": {{ \"harvester\": {enabled.ToString().ToLowerInvariant()} }} }}";
+				var jsonString = $"{{ \"{artifact}\": null }}";
 				Model.Show = JsonConvert.DeserializeObject(jsonString);
-				return;
 			}
 			var setting = JsonConvert.DeserializeObject($"{{ \"harvester\": {enabled.ToString().ToLowerInvariant()} }}");
-			switch (artifact)
-			{
-				case "epub":
-					if (Model.Show.epub == null)
-						Model.Show.epub = setting;
-					else
-						Model.Show.epub.harvester = enabled;
-					break;
-				case "pdf":
-					if (Model.Show.pdf == null)
-						Model.Show.pdf = setting;
-					else
-						Model.Show.pdf.harvester = enabled;
-					break;
-				case "bloomReader":
-					if (Model.Show.bloomReader == null)
-						Model.Show.bloomReader = setting;
-					else
-						Model.Show.bloomReader.harvester = enabled;
-					break;
-				case "bloomSource":
-					if (Model.Show.bloomSource == null)
-						Model.Show.bloomSource = setting;
-					else
-						Model.Show.bloomSource.harvester = enabled;
-					break;
-				case "jsonTexts":
-					if (Model.Show.jsonTexts == null)
-						Model.Show.jsonTexts = setting;
-					else
-						Model.Show.jsonTexts.harvester = enabled;
-					break;
-				case "readOnline":
-					if (Model.Show.readOnline == null)
-						Model.Show.readOnline = setting;
-					else
-						Model.Show.readOnline.harvester = enabled;
-					break;
-				case "social":
-					if (Model.Show.social == null)
-						Model.Show.social = setting;
-					else
-						Model.Show.social.harvester = enabled;
-					break;
-				case "shellbook":
-					if (Model.Show.shellbook == null)
-						Model.Show.shellbook = setting;
-					else
-						Model.Show.shellbook.harvester = enabled;
-					break;
-				default:
-					throw new ArgumentException($"SetHarvesterEvaluation(): Unrecognized artifact type \"{artifact}\"");
-			}
+			// Get or create the artifact section in Show
+			if (Model.Show[artifact] == null)
+				Model.Show[artifact] = (JToken)setting;
+			else
+				((JToken)Model.Show[artifact])["harvester"] = enabled;
+			// Handle the hide reason ID
+			var artifactSection = (JToken)Model.Show[artifact];
+			if (!enabled && !string.IsNullOrEmpty(hideReasonId))
+				artifactSection["harvesterReasonToHideId"] = hideReasonId;
+			else if (artifactSection.SelectToken("harvesterReasonToHideId") != null)
+				artifactSection.SelectToken("harvesterReasonToHideId").Parent.Remove();
 		}
 
 		public void SetValueForShowTypeKey(string type, string key, string value)
