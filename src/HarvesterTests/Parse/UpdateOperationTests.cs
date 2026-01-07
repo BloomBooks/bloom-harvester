@@ -1,14 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using BloomHarvester.Parse;
+﻿using BloomHarvester.Parse;
 using NUnit.Framework;
-using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace BloomHarvesterTests.Parse
 {
+	[TestFixture]
 	class UpdateOperationTests
 	{
 		[Test]
