@@ -1,24 +1,23 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+	<UseWindowsForms>true</UseWindowsForms>
+	<UseWPF>false</UseWPF>
 
     <IsPackable>false</IsPackable>
 
     <LangVersion>7.1</LangVersion>
 
-    <PlatformTarget>x86</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
-    <PackageReference Include="Mono.Unix" version="7.1.0-final.1.21458.1" />
-    <PackageReference Include="MSTest.TestAdapter" Version="1.3.2" />
-    <PackageReference Include="MSTest.TestFramework" Version="1.3.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="NSubstitute" Version="4.2.1" />
-    <PackageReference Include="NUnit" Version="3.12.0" />
-    <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
-    <PackageReference Include="SIL.Core" Version="16.1.0-beta0004" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageReference Include="SIL.Core" Version="17.0.0-beta0079" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,19 +26,15 @@
 
   <ItemGroup>
     <Reference Include="Bloom">
-      <HintPath>..\..\lib\dotnet\Bloom.exe</HintPath>
+      <HintPath>..\..\lib\dotnet\Bloom.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <!-- Copy libtidy and its dependency, msvcr120.dll -->
-    <Exec Command="copy /Y &quot;$(SolutionDir)\lib\dotnet\libtidy.dll&quot; $(OutDir)" />
-    <Exec Command="copy /Y &quot;$(SolutionDir)\lib\dotnet\msvcr120.dll&quot; $(OutDir)" />
     <!-- Copy connections.dll to where tests can find it -->
-    <Exec Command="copy /Y &quot;$(SolutionDir)\lib\dotnet\DistFiles\connections.dll&quot; $(OutDir)" />
+    <Exec Command="copy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\DistFiles\connections.dll&quot; $(OutDir)" />
     <!-- Copy fonts dir to where tests can find it -->
     <Exec Command="if not exist $(OutDir)fonts mkdir $(OutDir)fonts" />
-    <Exec Command="xcopy /Y &quot;$(SolutionDir)\lib\dotnet\fonts&quot; $(OutDir)fonts" />
+    <Exec Command="xcopy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\fonts&quot; $(OutDir)fonts" />
   </Target>
 </Project>

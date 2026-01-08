@@ -183,7 +183,7 @@ namespace BloomHarvester.WebLibraryIntegration
 				// Note: ListObjects can only return 1,000 objects at a time,
 				//       and DeleteObjects can only delete 1,000 objects at a time.
 				//       So a loop is needed if the book contains 1,001+ objects.
-				matchingFilesResponse = GetAmazonS3WithAccessKey(bucketName).ListObjects(listMatchingObjectsRequest);
+				matchingFilesResponse = GetAmazonS3WithAccessKey(bucketName).ListObjectsAsync(listMatchingObjectsRequest, default).GetAwaiter().GetResult();
 				if (matchingFilesResponse.S3Objects.Count == 0)
 					return;
 
@@ -193,7 +193,7 @@ namespace BloomHarvester.WebLibraryIntegration
 					Objects = matchingFilesResponse.S3Objects.Select(s3Object => new KeyVersion() { Key = s3Object.Key }).ToList()
 				};
 
-				var response = GetAmazonS3WithAccessKey(bucketName).DeleteObjects(deleteObjectsRequest);
+				var response = GetAmazonS3WithAccessKey(bucketName).DeleteObjectsAsync(deleteObjectsRequest).GetAwaiter().GetResult();
 				Debug.Assert(response.DeleteErrors.Count == 0);
 
 				// Prep the next request (if needed)
@@ -244,7 +244,7 @@ namespace BloomHarvester.WebLibraryIntegration
 			request.BucketName = _bucketName;
 			request.Prefix = bookFolder;
 
-			var response = s3.ListObjectsV2(request);
+			var response = s3.ListObjectsV2Async(request).GetAwaiter().GetResult();
 
 			string idealFileName = $"{idealBaseName}.{extension}".ToLowerInvariant();
 			var idealTargets = response.S3Objects.Where(x => x.Key.ToLowerInvariant() == idealFileName);
@@ -267,8 +267,22 @@ namespace BloomHarvester.WebLibraryIntegration
 		public bool DoesFileExist(string fileName)
 		{
 			var s3 = GetAmazonS3WithAccessKey(_bucketName);
-			Amazon.S3.IO.S3FileInfo s3FileInfo = new Amazon.S3.IO.S3FileInfo(s3, _bucketName, fileName);
-			return s3FileInfo.Exists;
+			try
+			{
+				var metadataRequest = new Amazon.S3.Model.GetObjectMetadataRequest
+				{
+					BucketName = _bucketName,
+					Key = fileName
+				};
+				s3.GetObjectMetadataAsync(metadataRequest).GetAwaiter().GetResult();
+				return true;
+			}
+			catch (Amazon.S3.AmazonS3Exception ex)
+			{
+				if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+					return false;
+				throw;
+			}
 		}
 	}
 }
