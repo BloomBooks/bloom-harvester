@@ -25,6 +25,13 @@
   </ItemGroup>
 
   <ItemGroup>
+  	<!-- these are from http://www.schaik.com/pngsuite -->
+    <None Update="TestData\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Bloom">
       <HintPath>..\..\lib\dotnet\Bloom.dll</HintPath>
     </Reference>

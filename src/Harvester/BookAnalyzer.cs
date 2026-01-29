@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
@@ -485,7 +486,7 @@ namespace BloomHarvester
 		/// </remarks>
 		public ulong ComputeImageHash(string path)
 		{
-			using (var image = (Image<Rgba32>)Image.Load(path))
+			using (var image = LoadImageForHashing(path))
 			{
 				SanitizeImage(image);
 				// check whether we have R=G=B=0 (ie, black) for all pixels, presumably with A varying.
@@ -517,6 +518,70 @@ namespace BloomHarvester
 				}
 				var hashAlgorithm = new PerceptualHash();
 				return hashAlgorithm.Hash(image);
+			}
+		}
+
+		private static Image<Rgba32> LoadImageForHashing(string path)
+		{
+			try
+			{
+				// Load into truecolor RGBA to avoid palette + tRNS edge cases that can crash hashing.
+				return Image.Load<Rgba32>(path);
+			}
+			catch (Exception ex) when (ex is InvalidDataException
+				|| ex is NotSupportedException
+				|| ex is UnknownImageFormatException
+				|| ex is ImageFormatException
+				|| ex is ArgumentOutOfRangeException)
+			{
+				// Some PNGs (indexed + tRNS, unusual deflate streams, or odd IDAT chunking) fail in ImageSharp.
+				// System.Drawing can decode them; re-encode to a simple PNG (truecolor RGBA) and reload.
+				return LoadImageViaSystemDrawing(path);
+			}
+		}
+
+		private static Image<Rgba32> LoadImageViaSystemDrawing(string path)
+		{
+			using (var bitmap = new System.Drawing.Bitmap(path))
+			using (var argbBitmap = bitmap.Clone(
+				new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height),
+				System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+			{
+				var rect = new System.Drawing.Rectangle(0, 0, argbBitmap.Width, argbBitmap.Height);
+				var data = argbBitmap.LockBits(rect, System.Drawing.Imaging.ImageLockMode.ReadOnly,
+					System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+				try
+				{
+					var stride = data.Stride;
+					var width = argbBitmap.Width;
+					var height = argbBitmap.Height;
+					var source = new byte[stride * height];
+					Marshal.Copy(data.Scan0, source, 0, source.Length);
+					var rgba = new byte[width * height * 4];
+					for (int y = 0; y < height; ++y)
+					{
+						var rowStart = y * stride;
+						var destStart = y * width * 4;
+						for (int x = 0; x < width; ++x)
+						{
+							var srcIndex = rowStart + (x * 4);
+							var destIndex = destStart + (x * 4);
+							var b = source[srcIndex];
+							var g = source[srcIndex + 1];
+							var r = source[srcIndex + 2];
+							var a = source[srcIndex + 3];
+							rgba[destIndex] = r;
+							rgba[destIndex + 1] = g;
+							rgba[destIndex + 2] = b;
+							rgba[destIndex + 3] = a;
+						}
+					}
+					return Image.LoadPixelData<Rgba32>(rgba, width, height);
+				}
+				finally
+				{
+					argbBitmap.UnlockBits(data);
+				}
 			}
 		}
 

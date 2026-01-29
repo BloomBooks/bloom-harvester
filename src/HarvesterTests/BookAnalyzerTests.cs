@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml.Linq;
 using BloomHarvester;
 using BloomHarvester.LogEntries;
@@ -264,7 +265,7 @@ namespace BloomHarvesterTests
 			using (var tempFolder = new TemporaryFolder("BookAnalyzerTests"))
 			{
 				var filePath = Path.Combine(tempFolder.FolderPath, filename);
-				using (File.Create(filePath))	// TemporaryFolder takes a long time to dispose if you don't dispose this first.
+				using (File.Create(filePath))   // TemporaryFolder takes a long time to dispose if you don't dispose this first.
 				{
 					// System under test
 					var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData(), tempFolder.FolderPath);
@@ -739,6 +740,77 @@ $@"<html>
 			Assert.That(images[0], Is.EqualTo("100_1165.jpg"), "Image should be 100_1165.jpg");
 		}
 
+		[Test]
+		public void ComputeImageHash_PalettePngWithTransparency_DoesNotThrow()
+		{
+			/* BL-15792, a file from little zebra, created in Adobe Photoshop.
+			   The file is an edge case because it is and indexed-color PNG (IHDR color type 3)
+			   with a 256‑entry palette and a tRNS chunk (palette alpha; effectively 1‑bit transparency).
+			   Image tools report it as PaletteAlpha, not truecolor RGBA.
+			*/
+			var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData());
+			var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData", "PalettePngWithTRNS_IndexedColor.png");
+
+			Assert.That(File.Exists(path), Is.True, "Test image should be copied to the test output directory");
+			ulong hash = 0;
+			Assert.DoesNotThrow(() => hash = analyzer.ComputeImageHash(path));
+			Assert.That(hash, Is.Not.EqualTo(0UL), "Hash should be computed for a non-uniform image");
+		}
+
+		[Test]
+		public void ComputeImageHash_NormalPng_DoesNotThrow()
+		{
+			var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData());
+			var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData", "NormalTruecolorPng.png");
+
+			Assert.That(File.Exists(path), Is.True, "Test image should be copied to the test output directory");
+			ulong hash = 0;
+			Assert.DoesNotThrow(() => hash = analyzer.ComputeImageHash(path));
+			Assert.That(hash, Is.Not.EqualTo(0UL), "Hash should be computed for a non-uniform image");
+		}
+
+		[Test]
+		public void ComputeImageHash_PngSuiteSamples_DoesNotThrow()
+		{
+			var analyzer = new BookAnalyzer(GetMonoLingualHtml(), GetMetaData());
+			var testDataDirectory = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData");
+			var pngSuiteFiles = Directory.GetFiles(testDataDirectory, "*.png")
+				.Where(path => IsPngSuiteFile(Path.GetFileName(path)))
+				.OrderBy(Path.GetFileName)
+				.ToList();
+
+			Assert.That(pngSuiteFiles.Count, Is.GreaterThan(0), "Expected PNGSuite images in TestData");
+
+			var failures = new List<string>();
+			foreach (var path in pngSuiteFiles)
+			{
+				try
+				{
+					analyzer.ComputeImageHash(path);
+				}
+				catch (Exception ex)
+				{
+					failures.Add($"{Path.GetFileName(path)}: {ex.GetType().Name} {ex.Message}");
+				}
+			}
+
+			if (failures.Count > 0)
+			{
+				Assert.Fail($"Failed {failures.Count} of {pngSuiteFiles.Count} PNGSuite images:\n{string.Join("\n", failures)}");
+			}
+		}
+
+		private static bool IsPngSuiteFile(string fileName)
+		{
+			if (string.IsNullOrWhiteSpace(fileName))
+				return false;
+			if (!fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+				return false;
+			if (fileName.Equals("pngsuite.png", StringComparison.OrdinalIgnoreCase))
+				return false;
+			return !fileName.Any(ch => char.IsUpper(ch) || ch == '_');
+		}
+
 		private const string kHtmlUnmodifiedPages = @"<html>
   <head>
     <meta charset='UTF-8' />
@@ -860,7 +932,7 @@ $@"<html>
 </html>
 ";
 
-    private string kPagesWithOverlayImages = @"<html>
+		private string kPagesWithOverlayImages = @"<html>
   <head>
     <meta charset='UTF-8' />
   </head>
