@@ -1,12 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using BloomHarvester;
 using BloomHarvester.Parse.Model;
 using Newtonsoft.Json;
 using NUnit.Framework;
-using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace BloomHarvesterTests
 {
@@ -22,8 +19,8 @@ namespace BloomHarvesterTests
 		[Test]
 		public void NoAlerts_NotSilenced()
 		{
-			var invoker = new VSUnitTesting.PrivateObject(AlertManager.Instance);
-			bool result = (bool)invoker.Invoke("IsSilenced", new Object[] {null});
+			var method = typeof(AlertManager).GetMethod("IsSilenced", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			bool result = (bool)method.Invoke(AlertManager.Instance, new object[] { null });
 			Assert.That(result, Is.False);
 		}
 
@@ -50,8 +47,8 @@ namespace BloomHarvesterTests
 			for (int i = 0; i < 100; ++i)
 				alertTimes.AddLast(new AlertManager.Alert { TimeStamp = DateTime.Now.AddDays(-3) });
 
-			var invoker = new VSUnitTesting.PrivateObject(AlertManager.Instance);
-			invoker.SetField("_alerts", alertTimes);
+			var field = typeof(AlertManager).GetField("_alerts", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			field.SetValue(AlertManager.Instance, alertTimes);
 
 			bool isSilenced = AlertManager.Instance.RecordAlertAndCheckIfSilenced();
 			Assert.That(isSilenced, Is.False);

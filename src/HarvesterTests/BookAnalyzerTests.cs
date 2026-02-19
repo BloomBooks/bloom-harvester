@@ -945,7 +945,7 @@ $@"<html>
           </div>
         </div>
         <div class='bloom-canvas' data-imgsizebasedon='545,735'>
-          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add('bloom-imageLoadError')' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
+          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add(""bloom-imageLoadError"")' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
           <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement' data-default-languages='auto'>
             <div class='bloom-editable ImageDescriptionEdit-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='coverImageDescription' />
             <div class='bloom-editable ImageDescriptionEdit-style bloom-contentNational1' lang='es' contenteditable='true' data-book='coverImageDescription' />
@@ -1043,7 +1043,7 @@ $@"<html>
           </div>
         </div>
         <div class='bloom-canvas' data-imgsizebasedon='545,735'>
-          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add('bloom-imageLoadError')' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
+          <img data-book='coverImage' src='100_1165.jpg' onerror='this.classList.add(""bloom-imageLoadError"")' data-copyright='Copyright © 2010, Stephen McConnel' data-creator='Stephen McConnel' data-license='cc-by' alt='' />
           <div class='bloom-translationGroup bloom-imageDescription bloom-trailingElement' data-default-languages='auto'>
             <div class='bloom-editable ImageDescriptionEdit-style bloom-visibility-code-on bloom-content1' lang='en' contenteditable='true' data-book='coverImageDescription' />
             <div class='bloom-editable ImageDescriptionEdit-style bloom-contentNational1' lang='es' contenteditable='true' data-book='coverImageDescription' />

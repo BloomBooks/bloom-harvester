@@ -1,9 +1,9 @@
-﻿using BloomHarvester;
+using BloomHarvester;
 using BloomHarvester.Logger;
 using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
 using BloomHarvesterTests.Parse.Model;
-using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Reflection;
 using Newtonsoft.Json;
 using NUnit.Framework;
 using SIL.IO;
@@ -42,9 +42,9 @@ namespace BloomHarvesterTests
 				Tags = initialValue
 			});
 
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
-
+			var method = book.GetType().GetMethod("GetTagDictionary", BindingFlags.Instance | BindingFlags.NonPublic);
+			var map = method.Invoke(book, null) as Dictionary<string, List<string>>;
+			
 			Assert.That(map.Count, Is.EqualTo(0), message);
 		}
 
@@ -58,8 +58,9 @@ namespace BloomHarvesterTests
 			});
 
 			// System under test
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+			var method = book.GetType().GetMethod("GetTagDictionary", BindingFlags.Instance | BindingFlags.NonPublic);
+			var map = method.Invoke(book, null) as Dictionary<string, List<string>>;
+
 
 			// Verification
 			var expected = new Dictionary<string, List<string>>();
@@ -78,8 +79,9 @@ namespace BloomHarvesterTests
 			});
 
 			// System under test
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+			var method = book.GetType().GetMethod("GetTagDictionary", BindingFlags.Instance | BindingFlags.NonPublic);
+			var map = method.Invoke(book, null) as Dictionary<string, List<string>>;
+
 
 			// Verification
 			var expected = new Dictionary<string, List<string>>();
@@ -98,8 +100,9 @@ namespace BloomHarvesterTests
 			});
 
 			// System under test
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+			var method = book.GetType().GetMethod("GetTagDictionary", BindingFlags.Instance | BindingFlags.NonPublic);
+			var map = method.Invoke(book, null) as Dictionary<string, List<string>>;
+
 
 			// Verification
 			var expected = new Dictionary<string, List<string>>();
@@ -119,8 +122,9 @@ namespace BloomHarvesterTests
 			});
 
 			// System under test
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var map = invoker.Invoke("GetTagDictionary") as Dictionary<string, List<string>>;
+			var method = book.GetType().GetMethod("GetTagDictionary", BindingFlags.Instance | BindingFlags.NonPublic);
+			var map = method.Invoke(book, null) as Dictionary<string, List<string>>;
+
 
 			// Verification
 			var expected = new Dictionary<string, List<string>>();

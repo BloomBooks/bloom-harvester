@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,7 +10,6 @@ using BloomHarvester.Parse;
 using BloomHarvester.Parse.Model;
 using BloomHarvester.WebLibraryIntegration;
 using BloomHarvesterTests.Parse.Model;
-using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
@@ -100,8 +99,8 @@ namespace BloomHarvesterTests
 		{
 			using (var harvester1 = new Harvester(new HarvesterOptions() { Environment = (EnvironmentSetting)Enum.Parse(typeof(EnvironmentSetting), env1), SuppressLogs = true}))
 			{
-				var obj = new VSUnitTesting.PrivateObject(harvester1);
-				obj.SetField("_initTime", DateTime.Now.AddSeconds(-1));
+				var field = typeof(Harvester).GetField("_initTime", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+				field.SetValue(harvester1, DateTime.Now.AddSeconds(-1));
 
 				using (var harvester2 = new Harvester(new HarvesterOptions() { Environment = (EnvironmentSetting)Enum.Parse(typeof(EnvironmentSetting), env2), SuppressLogs = true }))
 				{

@@ -17,8 +17,8 @@ fi
 
 echo removing all files and folders from lib/dotnet
 rm -rf ../lib/dotnet/*
-echo copying files from \"$bloomDir/output/$buildMode\" to lib/dotnet
-cp -r "$bloomDir/output/$buildMode/"* ../lib/dotnet
+echo copying files from \"$bloomDir/output/$buildMode/x64\" to lib/dotnet
+cp -r "$bloomDir/output/$buildMode/x64"/* ../lib/dotnet
 echo copying files from \"$bloomDir/output/browser\" to lib/dotnet
 cp -r "$bloomDir/output/browser" ../lib/dotnet
 echo copying files from \"$bloomDir/DistFiles\" to lib/dotnet

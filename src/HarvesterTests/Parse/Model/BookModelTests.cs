@@ -1,6 +1,5 @@
-﻿using BloomHarvester.Parse.Model;
+using BloomHarvester.Parse.Model;
 using NUnit.Framework;
-using VSUnitTesting = Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using BloomHarvester;
@@ -36,8 +35,8 @@ namespace BloomHarvesterTests.Parse.Model
 		public void BookModel_GetWriteableMembers_IncludesExpectedMember(string expectedMemberName)
 		{
 			var book = new BookModel();
-			var invoker = new VSUnitTesting.PrivateObject(book);
-			var writeableMembers = invoker.Invoke("GetWriteableMembers") as HashSet<string>;
+			var method = typeof(BookModel).GetMethod("GetWriteableMembers", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			var writeableMembers = method.Invoke(book, null) as HashSet<string>;
 
 			Assert.That(writeableMembers.Contains(expectedMemberName), Is.True);
 		}
