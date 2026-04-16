@@ -216,8 +216,8 @@ namespace BloomHarvester
 					else
 						Model.Show[type][key] = value;
 				}
-				else if (Model?.Show?[type]?[key] != null)
-					Model.Show[type][key].Parent.Remove();
+				else
+					RemoveValueForShowTypeKey(type, key);
 			}
 		}
 
@@ -233,6 +233,12 @@ namespace BloomHarvester
 				else
 					Model.Show[type][key] = value;
 			}
+		}
+
+		public void RemoveValueForShowTypeKey(string type, string key)
+		{
+			if (Model?.Show?[type]?[key] != null)
+				Model.Show[type][key].Parent.Remove();
 		}
 
 		internal void UpdatePerceptualHash(string infoPath)
