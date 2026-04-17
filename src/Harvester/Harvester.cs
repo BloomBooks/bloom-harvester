@@ -1005,6 +1005,8 @@ namespace BloomHarvester
 
 				if (!_pdfExists)
 					book.SetValueForShowTypeKey("pdf", "exists", false);
+				else
+					book.RemoveValueForShowTypeKey("pdf", "exists");
 			}
 
 			// harvester checks the license to evaluate "shellbook", ignoring any success in generating artifacts

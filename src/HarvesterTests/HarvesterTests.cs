@@ -1281,6 +1281,37 @@ namespace BloomHarvesterTests
 			}
 		}
 
+		[Test]
+		public void ProcessOneBook_PdfExists_RemovesStaleExistsFalseFlag()
+		{
+			var options = GetHarvesterOptionsForProcessOneBookTests();
+			var fakeAnalyzer = Substitute.For<IBookAnalyzer>();
+			fakeAnalyzer.Language1Code.Returns("de");
+			fakeAnalyzer.Configure().GetBestPHashImageSources().Returns(new List<string>());
+			var s3DownloadClient = Substitute.For<IS3Client>();
+			s3DownloadClient.DoesFileExist(default).ReturnsForAnyArgs(true);
+
+			using (var harvester = GetSubstituteHarvester(options, bookAnalyzer: fakeAnalyzer, s3DownloadClient: s3DownloadClient))
+			{
+				var book = BookTests.CreateDefaultBook();
+				book.Model.Show = JObject.Parse("{ \"pdf\": { \"exists\": false } }");
+
+				ConfigureForFakeIndexHtmFile(harvester, book.Model.BaseUrl);
+				SetupMockBookDownloadHandler(book.Model.ObjectId, harvester);
+
+				harvester.ProcessOneBook(book);
+
+				VerifyNoExceptions();
+
+				var show = (JObject)book.Model.Show;
+				var pdfShowInfo = (JObject)show["pdf"];
+				Assert.That(pdfShowInfo["langTag"]?.Value<string>(), Is.EqualTo("de"),
+					"\"pdf\" show info should contain langTag when the PDF exists");
+				Assert.That(pdfShowInfo.TryGetValue("exists", out JToken _), Is.False,
+					"\"pdf\" show info should not contain \"exists\" when the PDF exists");
+			}
+		}
+
 		[TestCase("")]
 		[TestCase("{ \"epub\": { \"harvester\": false } }")]
 		[TestCase("{ \"epub\": { \"harvester\": false, \"langTag\": \"pt\" } }")]
