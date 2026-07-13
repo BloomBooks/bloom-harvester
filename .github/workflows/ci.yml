@@ -1,15 +1,22 @@
-# Builds and tests BloomHarvester, replacing the TeamCity continuous config
-# (Bloom_HarvesterMasterContinuous). Mirrors its steps: nuget restore, msbuild Release,
-# dotnet test against the built test dll — plus fetching the Bloom dependencies first,
-# which TeamCity did via build/getDependencies.ps1 too. That script now downloads the
-# bundle that BloomDesktop's harvester-artifacts workflow publishes to the rolling
-# GitHub Release tag harvester-development-latest (see this branch's change to
-# build/getDependencies.ps1), so this workflow has no TeamCity dependency at all.
+# Builds, tests, and publishes BloomHarvester, replacing the TeamCity continuous configs
+# (Bloom_HarvesterMasterContinuous / Bloom_HarvesterReleaseContinuous). Mirrors their
+# steps: nuget restore, msbuild Release, dotnet test against the built test dll — plus
+# fetching the Bloom dependencies first, which TeamCity did via build/getDependencies.ps1
+# too. That script downloads the bundle that BloomDesktop's harvester-artifacts workflow
+# publishes to a rolling GitHub Release, so CI has no TeamCity dependency at all.
 #
-# Not yet covered here: publishing the harvester's own build for updateDeployment.ps1,
-# which still downloads from the TeamCity configs (Bloom_HarvesterMasterContinuous /
-# Bloom_HarvesterReleaseContinuous). Keep those TC configs alive until that is migrated
-# (likely the same rolling-release pattern).
+# When everything is green, the deployable build (src/Harvester/bin/Release/net8.0-windows,
+# which the project's post-build step populates with all of lib/dotnet, so it contains
+# BloomHarvester.exe and Bloom.exe side by side) is zipped with a top-level Release/
+# folder — the exact layout the old TeamCity artifact had — and uploaded to a ROLLING
+# GITHUB RELEASE with a fixed per-branch tag:
+#
+#   master  -> tag master-latest   (consumed by updateDeployment.ps1 -environment dev)
+#   release -> tag release-latest  (consumed by updateDeployment.ps1 -environment prod)
+#
+# The asset is only replaced by successful builds, so the URL always serves the latest
+# green build (same semantics as TeamCity's latest.lastSuccessful). The releases are
+# marked prerelease so they never show up as the repository's "Latest release".
 
 name: Build and Test
 
@@ -30,9 +37,13 @@ jobs:
         runs-on: windows-latest
         timeout-minutes: 60
 
+        env:
+            IS_DEPLOY_BRANCH: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/release' }}
+
+        # contents: write is needed to create/update the rolling release;
         # checks: write lets the test-report step create its check run.
         permissions:
-            contents: read
+            contents: write
             checks: write
 
         steps:
@@ -70,3 +81,49 @@ jobs:
               with:
                   check_name: Test results
                   trx_files: TestResults/*.trx
+
+            # ----- Deployable bundle -----
+            # Zip the build output under a top-level Release/ folder, the layout
+            # updateDeployment.ps1 expects (same as the old TeamCity artifact).
+            - name: Assemble deployment bundle
+              shell: pwsh
+              run: |
+                  $staging = Join-Path $env:RUNNER_TEMP 'deploy-staging'
+                  robocopy 'src\Harvester\bin\Release\net8.0-windows' (Join-Path $staging 'Release') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+                  if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE)" }
+                  Push-Location $staging
+                  7z a -tzip "$env:GITHUB_WORKSPACE\harvester.zip" *
+                  if ($LASTEXITCODE -ne 0) { throw "7z failed ($LASTEXITCODE)" }
+                  Pop-Location
+                  exit 0
+
+            # Reaching this step means build + tests succeeded, so the fixed URL always
+            # serves the latest successful build. --clobber replaces the previous asset.
+            - name: Update rolling release
+              if: ${{ env.IS_DEPLOY_BRANCH == 'true' }}
+              shell: pwsh
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  $tag = "${{ github.ref_name }}-latest"
+                  gh release view $tag *> $null
+                  if ($LASTEXITCODE -ne 0) {
+                    Write-Host "Release $tag does not exist yet; creating it."
+                    gh release create $tag --prerelease `
+                      --title "BloomHarvester ${{ github.ref_name }} build (rolling)" `
+                      --notes "Rolling release: the asset is replaced by every successful build of the ${{ github.ref_name }} branch. Consumed by build/updateDeployment.ps1 on the harvester servers. Do not pin to this."
+                    if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+                  }
+                  gh release upload $tag "$env:GITHUB_WORKSPACE\harvester.zip" --clobber
+                  if ($LASTEXITCODE -ne 0) { throw "gh release upload failed" }
+                  Write-Host "Updated https://github.com/${{ github.repository }}/releases/download/$tag/harvester.zip"
+
+            # On other refs (manual dispatch of a test branch) attach the bundle as a
+            # short-lived workflow artifact instead, so it can be inspected.
+            - name: Upload bundle as workflow artifact (non-deploy runs)
+              if: ${{ env.IS_DEPLOY_BRANCH != 'true' }}
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: harvester
+                  path: harvester.zip
+                  retention-days: 3

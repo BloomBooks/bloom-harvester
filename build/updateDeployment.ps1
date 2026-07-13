@@ -6,11 +6,16 @@ param (
     [Switch]$skipDownload
 )
 
+# The build to deploy comes from this repo's Build and Test GitHub Actions workflow,
+# which publishes each green build of a branch to a rolling GitHub Release:
+# master -> master-latest (dev), release -> release-latest (prod). The asset is only
+# replaced by successful builds, so these URLs always serve the latest good build
+# (the same semantics as the TeamCity latest.lastSuccessful URLs used previously).
 $harvestRootDir = "C:\HarvesterDev";
-$buildQueueName = "Bloom_HarvesterMasterContinuous";
+$releaseTag = "master-latest";
 If ($environment -eq "prod") {
 	$harvestRootDir = "C:\Harvester";
-    $buildQueueName = "Bloom_HarvesterReleaseContinuous";
+    $releaseTag = "release-latest";
 }
 
 # Currently just forget about RestartOnCrash (because it doesn't work properly when running with multiple users)
@@ -37,7 +42,7 @@ $downloadDir = "$PSScriptRoot\Download"
 
 # Download the latest build (if requested)
 $unzipDestination = "$($downloadDir)\Unzipped"
-$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL https://build.palaso.org/guestAuth/repository/downloadAll/$($buildQueueName)/latest.lastSuccessful -Filename harvester.zip -Output $($downloadDir)\Unzipped $(If ($skipDownload) { "-skipDownload"})"
+$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL https://github.com/BloomBooks/bloom-harvester/releases/download/$($releaseTag)/harvester.zip -Filename harvester.zip -Output $($downloadDir)\Unzipped $(If ($skipDownload) { "-skipDownload"})"
 Invoke-Expression $command
 
 # Copy from the unzip destination
