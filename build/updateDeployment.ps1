@@ -6,6 +6,9 @@ param (
     [Switch]$skipDownload
 )
 
+$ErrorActionPreference = "Stop"
+$PSDefaultParameterValues['*:ErrorAction']='Stop'
+
 # The build to deploy comes from this repo's Build and Test GitHub Actions workflow,
 # which publishes each green build of a branch to a rolling GitHub Release:
 # master -> master-latest (dev), release -> release-latest (prod). The asset is only
