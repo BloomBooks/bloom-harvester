@@ -3,7 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows7.0</TargetFramework>
 	<UseWindowsForms>true</UseWindowsForms>
-	<UseWPF>false</UseWPF>
+	<!-- Bloom.dll depends on WPF assemblies (e.g. WindowsBase), so we need the WPF reference set. -->
+	<UseWPF>true</UseWPF>
 
     <IsPackable>false</IsPackable>
 

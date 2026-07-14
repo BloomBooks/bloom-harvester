@@ -1,6 +1,7 @@
 using BloomHarvester.WebLibraryIntegration;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.Extensibility;
 using SIL.IO;
 using System;
 using System.Collections.Generic;
@@ -17,7 +18,7 @@ namespace BloomHarvester.Logger
 	/// </summary>
 	class AzureMonitorLogger : IMonitorLogger, IDisposable
 	{
-		private TelemetryClient _telemetry = new TelemetryClient();
+		private TelemetryClient _telemetry;
 		private IMonitorLogger _fileLogger; // log to both Azure as well as something on the local filesystem, which would have more real-time access
 		private IIssueReporter _issueReporter;
 
@@ -39,14 +40,18 @@ namespace BloomHarvester.Logger
 			string instrumentationKey = Environment.GetEnvironmentVariable(environmentVarName);
 			Debug.Assert(!String.IsNullOrWhiteSpace(instrumentationKey), "Azure Instrumentation Key is invalid. Azure logging probably won't work.");
 
+			var telemetryConfiguration = TelemetryConfiguration.CreateDefault();
 			try
 			{
-				Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration.Active.InstrumentationKey = instrumentationKey;
+				if (instrumentationKey == null)
+					throw new ArgumentNullException(nameof(instrumentationKey));
+				telemetryConfiguration.ConnectionString = "InstrumentationKey=" + instrumentationKey;
 			}
-			catch (ArgumentNullException e)
+			catch (ArgumentException e)
 			{
 				_issueReporter.ReportException(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null);
 			}
+			_telemetry = new TelemetryClient(telemetryConfiguration);
 
 			_telemetry.Context.User.Id = "BloomHarvester " + harvesterId;
 			_telemetry.Context.Session.Id = Guid.NewGuid().ToString();
