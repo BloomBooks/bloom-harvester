@@ -5,7 +5,6 @@ using Microsoft.ApplicationInsights.Extensibility;
 using SIL.IO;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -38,7 +37,10 @@ namespace BloomHarvester.Logger
 			}
 
 			string instrumentationKey = Environment.GetEnvironmentVariable(environmentVarName);
-			Debug.Assert(!String.IsNullOrWhiteSpace(instrumentationKey), "Azure Instrumentation Key is invalid. Azure logging probably won't work.");
+			// Don't use Debug.Assert here: it is compiled out of Release builds (so it never
+			// protects production anyway), and in Debug builds it crashes unit tests.
+			if (String.IsNullOrWhiteSpace(instrumentationKey))
+				Console.Error.WriteLine("WARNING: Azure Instrumentation Key is invalid. Azure logging probably won't work.");
 
 			var telemetryConfiguration = TelemetryConfiguration.CreateDefault();
 			try

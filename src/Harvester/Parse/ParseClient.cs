@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
@@ -60,7 +59,11 @@ namespace BloomHarvester.Parse
 		{
 			_environmentSetting = environment;
 			this.ApplicationId = GetApplicationId(environment);
-			Debug.Assert(!String.IsNullOrWhiteSpace(ApplicationId), "Parse Application ID is invalid. Retrieving books from Parse probably won't work. Consider checking your environment variables.");
+			// Don't use Debug.Assert here: it is compiled out of Release builds (so it never
+			// protects production anyway), and in Debug builds it crashes unit tests that
+			// construct a ParseClient without ever contacting the server.
+			if (String.IsNullOrWhiteSpace(ApplicationId))
+				Console.Error.WriteLine("WARNING: Parse Application ID is invalid. Retrieving books from Parse probably won't work. Consider checking your environment variables.");
 
 			Logger = logger;
 		}
