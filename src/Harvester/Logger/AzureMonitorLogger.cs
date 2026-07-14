@@ -45,8 +45,8 @@ namespace BloomHarvester.Logger
 			var telemetryConfiguration = TelemetryConfiguration.CreateDefault();
 			try
 			{
-				if (instrumentationKey == null)
-					throw new ArgumentNullException(nameof(instrumentationKey));
+				if (String.IsNullOrWhiteSpace(instrumentationKey))
+					throw new ArgumentException("Instrumentation key is null or whitespace.", nameof(instrumentationKey));
 				telemetryConfiguration.ConnectionString = "InstrumentationKey=" + instrumentationKey;
 			}
 			catch (ArgumentException e)
