@@ -15,9 +15,13 @@ $libDir = "$PSScriptRoot\..\lib\dotnet\";
 #$folders = $libDir, $debugBuildDir, $releaseBuildDir
 $folders = $libDir
 
-# Download/extract/copy dependencies from Bloom Desktop
+# Download/extract/copy dependencies from Bloom Desktop.
+# The zip is published by BloomDesktop's harvester-artifacts GitHub Actions workflow: every
+# successful build of the harvester-development branch replaces the asset on this rolling
+# release tag, so (like TeamCity's old latest.lastSuccessful URL) this always serves the
+# latest green build. The zip's internal layout matches the old TeamCity artifact.
 $dependenciesDir = "$($downloadDir)\UnzippedDependencies"
-$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL https://build.palaso.org/guestAuth/repository/downloadAll/Bloom_BloomDesktopHarvesterBranchContinuous/latest.lastSuccessful -Filename bloom.zip -Output $($dependenciesDir) $(If ($skipDownload) { "-skipDownload"})"
+$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL https://github.com/BloomBooks/BloomDesktop/releases/download/harvester-development-latest/bloom-harvester-deps.zip -Filename bloom.zip -Output $($dependenciesDir) $(If ($skipDownload) { "-skipDownload"})"
 Invoke-Expression $command
 
 
