@@ -80,7 +80,7 @@ jobs:
               uses: EnricoMi/publish-unit-test-result-action/windows@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
               with:
                   check_name: Test results
-                  trx_files: TestResults/*.trx
+                  files: TestResults/*.trx
 
             # ----- Deployable bundle -----
             # Zip the build output under a top-level Release/ folder, the layout
