@@ -1,10 +1,10 @@
 using BloomHarvester.WebLibraryIntegration;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.Extensibility;
 using SIL.IO;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,7 +17,8 @@ namespace BloomHarvester.Logger
 	/// </summary>
 	class AzureMonitorLogger : IMonitorLogger, IDisposable
 	{
-		private TelemetryClient _telemetry = new TelemetryClient();
+		private TelemetryConfiguration _telemetryConfiguration;
+		private TelemetryClient _telemetry;
 		private IMonitorLogger _fileLogger; // log to both Azure as well as something on the local filesystem, which would have more real-time access
 		private IIssueReporter _issueReporter;
 
@@ -37,16 +38,23 @@ namespace BloomHarvester.Logger
 			}
 
 			string instrumentationKey = Environment.GetEnvironmentVariable(environmentVarName);
-			Debug.Assert(!String.IsNullOrWhiteSpace(instrumentationKey), "Azure Instrumentation Key is invalid. Azure logging probably won't work.");
+			// Don't use Debug.Assert here: it is compiled out of Release builds (so it never
+			// protects production anyway), and in Debug builds it crashes unit tests.
+			if (String.IsNullOrWhiteSpace(instrumentationKey))
+				Console.Error.WriteLine("WARNING: Azure Instrumentation Key is invalid. Azure logging probably won't work.");
 
+			_telemetryConfiguration = TelemetryConfiguration.CreateDefault();
 			try
 			{
-				Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration.Active.InstrumentationKey = instrumentationKey;
+				if (String.IsNullOrWhiteSpace(instrumentationKey))
+					throw new ArgumentException("Instrumentation key is null or whitespace.", nameof(instrumentationKey));
+				_telemetryConfiguration.ConnectionString = "InstrumentationKey=" + instrumentationKey;
 			}
-			catch (ArgumentNullException e)
+			catch (ArgumentException e)
 			{
 				_issueReporter.ReportException(e, $"InstrumentationKey: {instrumentationKey ?? "null"}.\nenvironmentVarName: {environmentVarName}", null);
 			}
+			_telemetry = new TelemetryClient(_telemetryConfiguration);
 
 			_telemetry.Context.User.Id = "BloomHarvester " + harvesterId;
 			_telemetry.Context.Session.Id = Guid.NewGuid().ToString();
@@ -98,6 +106,7 @@ namespace BloomHarvester.Logger
 			_telemetry.Flush();
 			Console.Out.WriteLine("Flushing AzureMonitor");
 			System.Threading.Thread.Sleep(5000);    // Allow some time to flush before shutdown. It might not flush right away. (https://docs.microsoft.com/en-us/azure/azure-monitor/app/api-custom-events-metrics#tracktrace)
+			_telemetryConfiguration.Dispose();
 		}
 
 		// Log a trace with Severity = Critical

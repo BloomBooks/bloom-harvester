@@ -47,6 +47,7 @@ namespace BloomHarvesterTests
 			_fakeIssueReporter = null;
 			_logger = Substitute.For<IMonitorLogger>();
 			_fakeBloomCli = null;
+			_fakeFontChecker = null;
 			_fakeDiskSpaceManager = Substitute.For<IDiskSpaceManager>();	// This will basically null-op whenever CleanupIfNeeded is called.
 			_fakeFileIO = null;
 		}
