@@ -1,6 +1,9 @@
 param (
     [Switch]$skipDownload,
-    [Switch]$clean
+    [Switch]$clean,
+
+    [ValidateSet('development', 'production')]
+    [string]$channel = 'development'
 )
 
 # Reference a custom commandlet that allows a synchronous delete
@@ -17,11 +20,23 @@ $folders = $libDir
 
 # Download/extract/copy dependencies from Bloom Desktop.
 # The zip is published by BloomDesktop's harvester-artifacts GitHub Actions workflow: every
-# successful build of the harvester-development branch replaces the asset on this rolling
-# release tag, so (like TeamCity's old latest.lastSuccessful URL) this always serves the
-# latest green build. The zip's internal layout matches the old TeamCity artifact.
+# successful build of a harvester branch replaces the asset on that branch's rolling release
+# tag, so (like TeamCity's old latest.lastSuccessful URL) this always serves the latest green
+# build. The zip's internal layout matches the old TeamCity artifact.
+#
+# There is one bundle per channel, and which one you want depends on what is being built:
+#   development (default) -> Bloom's harvester-development branch. Local development, and
+#                            CI on master, which deploys to the dev harvester server.
+#   production            -> Bloom's harvester-production branch. CI on release, which
+#                            deploys to the production harvester server.
+# TeamCity expressed that same pairing as per-config artifact dependencies
+# (Harvester-Master-Continuous  <- BloomDesktop-HarvesterDevelopmentBranch-Continuous,
+#  Harvester-Release-Continuous <- BloomDesktop-HarvesterProductionBranch-Continuous);
+# here the caller selects it with -channel instead.
 $dependenciesDir = "$($downloadDir)\UnzippedDependencies"
-$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL https://github.com/BloomBooks/BloomDesktop/releases/download/harvester-development-latest/bloom-harvester-deps.zip -Filename bloom.zip -Output $($dependenciesDir) $(If ($skipDownload) { "-skipDownload"})"
+$dependenciesUrl = "https://github.com/BloomBooks/BloomDesktop/releases/download/harvester-$($channel)-latest/bloom-harvester-deps.zip"
+Write-Host "Getting Bloom $($channel) dependencies from $($dependenciesUrl)"
+$command = "$($PSScriptRoot)\downloadAndExtractZip.ps1 -URL $($dependenciesUrl) -Filename bloom.zip -Output $($dependenciesDir) $(If ($skipDownload) { "-skipDownload"})"
 Invoke-Expression $command
 
 
