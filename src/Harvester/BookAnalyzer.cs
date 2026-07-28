@@ -221,7 +221,7 @@ namespace BloomHarvester
 			{
 				mode = _publishSettings?.epub?.mode;
 			}
-			catch (Exception e)
+			catch (Exception)
 			{
 				mode = "flowable";
 			}
