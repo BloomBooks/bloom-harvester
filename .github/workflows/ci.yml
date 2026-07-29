@@ -39,6 +39,11 @@ jobs:
 
         env:
             IS_DEPLOY_BRANCH: ${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/release' }}
+            # Which Bloom the harvester is built against and ships with: the release branch
+            # deploys to the production server, so it needs Bloom's harvester-production
+            # bundle; everything else gets harvester-development. TeamCity did this with
+            # per-config artifact dependencies (see build/getDependencies.ps1).
+            BLOOM_CHANNEL: ${{ github.ref == 'refs/heads/release' && 'production' || 'development' }}
 
         # contents: write is needed to create/update the rolling release;
         # checks: write lets the test-report step create its check run.
@@ -59,7 +64,7 @@ jobs:
             # BloomDesktop's harvester-artifacts workflow and copies it into lib/dotnet.
             - name: Get Bloom dependencies
               shell: pwsh
-              run: ./build/getDependencies.ps1
+              run: ./build/getDependencies.ps1 -channel $env:BLOOM_CHANNEL
 
             - name: nuget restore
               run: nuget restore BloomHarvester.sln
