@@ -18,6 +18,8 @@
 		<Reference Include="$(BloomLibDir)Newtonsoft.Json.dll" />
 		<Reference Include="$(BloomLibDir)AWSSDK.Core.dll" />
 		<Reference Include="$(BloomLibDir)AWSSDK.S3.dll" />
+		<Reference Include="$(BloomLibDir)CommandLine.dll" />
+		<Reference Include="$(BloomLibDir)RestSharp.dll" />
 
 		<Reference Include="$(BloomLibDir)System.CodeDom.dll" Condition="Exists('$(BloomLibDir)System.CodeDom.dll')" />
 		<Reference Include="$(BloomLibDir)System.Text.Json.dll" Condition="Exists('$(BloomLibDir)System.Text.Json.dll')" />
