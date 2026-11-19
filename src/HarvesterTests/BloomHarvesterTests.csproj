@@ -18,7 +18,6 @@
     <PackageReference Include="NSubstitute" Version="4.2.1" />
     <PackageReference Include="NUnit" Version="3.14.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
-    <PackageReference Include="SIL.Core" Version="18.0.0-beta0028" />
   </ItemGroup>
 
   <ItemGroup>
@@ -32,17 +31,11 @@
     </None>
   </ItemGroup>
 
-  <ItemGroup>
-    <Reference Include="Bloom">
-      <HintPath>..\..\lib\dotnet\Bloom.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <!-- Copy connections.dll to where tests can find it -->
-    <Exec Command="copy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\DistFiles\connections.dll&quot; $(OutDir)" />
+    <Exec Command="copy /Y &quot;$(BloomLibDir)DistFiles\connections.dll&quot; $(OutDir)" />
     <!-- Copy fonts dir to where tests can find it -->
     <Exec Command="if not exist $(OutDir)fonts mkdir $(OutDir)fonts" />
-    <Exec Command="xcopy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\fonts&quot; $(OutDir)fonts" />
+    <Exec Command="xcopy /Y &quot;$(BloomLibDir)fonts&quot; $(OutDir)fonts" />
   </Target>
 </Project>
