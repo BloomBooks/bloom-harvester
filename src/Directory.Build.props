@@ -5,9 +5,9 @@
 		them, so their versions always match whatever Bloom we are built against. A NuGet package
 		would overwrite Bloom's copy in the output folder, and Bloom.exe would then run against it.
 
-		Some are not used by our own code, but Bloom needs a newer version than the .NET 8 framework
-		has; referencing Bloom's copy keeps the compiler from settling on the framework's (MSB3277).
-		Those are included only if this Bloom ships them.
+		Bloom ships a System.*.dll only when it needs a newer version than the .NET 8 framework
+		has. We reference all of them, used by our code or not, so the compiler doesn't settle on
+		the framework's older copy (MSB3277).
 	-->
 	<PropertyGroup>
 		<BloomLibDir>$(MSBuildThisFileDirectory)..\lib\dotnet\</BloomLibDir>
@@ -21,8 +21,6 @@
 		<Reference Include="$(BloomLibDir)CommandLine.dll" />
 		<Reference Include="$(BloomLibDir)RestSharp.dll" />
 
-		<Reference Include="$(BloomLibDir)System.CodeDom.dll" Condition="Exists('$(BloomLibDir)System.CodeDom.dll')" />
-		<Reference Include="$(BloomLibDir)System.Text.Json.dll" Condition="Exists('$(BloomLibDir)System.Text.Json.dll')" />
-		<Reference Include="$(BloomLibDir)System.Text.Encodings.Web.dll" Condition="Exists('$(BloomLibDir)System.Text.Encodings.Web.dll')" />
+		<Reference Include="$(BloomLibDir)System.*.dll" />
 	</ItemGroup>
 </Project>

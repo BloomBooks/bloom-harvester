@@ -33,9 +33,9 @@
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <!-- Copy connections.dll to where tests can find it -->
-    <Exec Command="copy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\DistFiles\connections.dll&quot; $(OutDir)" />
+    <Exec Command="copy /Y &quot;$(BloomLibDir)DistFiles\connections.dll&quot; $(OutDir)" />
     <!-- Copy fonts dir to where tests can find it -->
     <Exec Command="if not exist $(OutDir)fonts mkdir $(OutDir)fonts" />
-    <Exec Command="xcopy /Y &quot;$(MSBuildProjectDirectory)\..\..\lib\dotnet\fonts&quot; $(OutDir)fonts" />
+    <Exec Command="xcopy /Y &quot;$(BloomLibDir)fonts&quot; $(OutDir)fonts" />
   </Target>
 </Project>

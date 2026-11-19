@@ -27,6 +27,6 @@
 	</ItemGroup>
 
 	<Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-	  <Exec Command="xcopy /S /Y /I /Q /D ..\..\lib\dotnet $(OutDir)&#xD;&#xA;" />
+	  <Exec Command="xcopy /S /Y /I /Q /D &quot;$(BloomLibDir.TrimEnd('\'))&quot; $(OutDir)&#xD;&#xA;" />
 	</Target>
 </Project>
