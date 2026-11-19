@@ -23,4 +23,16 @@
 
 		<Reference Include="$(BloomLibDir)System.*.dll" />
 	</ItemGroup>
+
+	<!--
+		Fail the build when a NuGet package brings its own copy of a DLL that Bloom ships. That copy
+		would overwrite Bloom's in the output folder, so Bloom.exe would run on a version it wasn't
+		built with, and nothing else reports it. Reference Bloom's copy above instead.
+	-->
+	<Target Name="CheckNoPackageReplacesBloomDlls" AfterTargets="ResolveAssemblyReferences">
+		<ItemGroup>
+			<_PackageCopyOfBloomDll Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll' And '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' == '' And Exists('$(BloomLibDir)%(Filename)%(Extension)') And '%(RootDir)%(Directory)' != '$([System.IO.Path]::GetFullPath($(BloomLibDir)))'" />
+		</ItemGroup>
+		<Error Condition="'@(_PackageCopyOfBloomDll)' != ''" Text="A NuGet package brings its own copy of %(_PackageCopyOfBloomDll.Filename)%(_PackageCopyOfBloomDll.Extension), which Bloom ships in lib/dotnet (%(_PackageCopyOfBloomDll.FullPath)). It would replace Bloom's copy in the output folder. Reference Bloom's copy in src/Directory.Build.props instead." />
+	</Target>
 </Project>
