@@ -1,0 +1,26 @@
+<Project>
+	<!--
+		Assemblies that both the harvester and Bloom use. We compile against the copies Bloom ships
+		in lib/dotnet (run build/getDependencies.ps1 first) instead of declaring NuGet packages for
+		them, so their versions always match whatever Bloom we are built against. A NuGet package
+		would overwrite Bloom's copy in the output folder, and Bloom.exe would then run against it.
+
+		Some are not used by our own code, but Bloom needs a newer version than the .NET 8 framework
+		has; referencing Bloom's copy keeps the compiler from settling on the framework's (MSB3277).
+		Those are included only if this Bloom ships them.
+	-->
+	<PropertyGroup>
+		<BloomLibDir>$(MSBuildThisFileDirectory)..\lib\dotnet\</BloomLibDir>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="$(BloomLibDir)Bloom.dll" />
+		<Reference Include="$(BloomLibDir)SIL.Core.dll" />
+		<Reference Include="$(BloomLibDir)Newtonsoft.Json.dll" />
+		<Reference Include="$(BloomLibDir)AWSSDK.Core.dll" />
+		<Reference Include="$(BloomLibDir)AWSSDK.S3.dll" />
+
+		<Reference Include="$(BloomLibDir)System.CodeDom.dll" Condition="Exists('$(BloomLibDir)System.CodeDom.dll')" />
+		<Reference Include="$(BloomLibDir)System.Text.Json.dll" Condition="Exists('$(BloomLibDir)System.Text.Json.dll')" />
+		<Reference Include="$(BloomLibDir)System.Text.Encodings.Web.dll" Condition="Exists('$(BloomLibDir)System.Text.Encodings.Web.dll')" />
+	</ItemGroup>
+</Project>
