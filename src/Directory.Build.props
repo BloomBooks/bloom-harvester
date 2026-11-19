@@ -1,0 +1,38 @@
+<Project>
+	<!--
+		Assemblies that both the harvester and Bloom use. We compile against the copies Bloom ships
+		in lib/dotnet (run build/getDependencies.ps1 first) instead of declaring NuGet packages for
+		them, so their versions always match whatever Bloom we are built against. A NuGet package
+		would overwrite Bloom's copy in the output folder, and Bloom.exe would then run against it.
+
+		Bloom ships a System.*.dll only when it needs a newer version than the .NET 8 framework
+		has. We reference all of them, used by our code or not, so the compiler doesn't settle on
+		the framework's older copy (MSB3277).
+	-->
+	<PropertyGroup>
+		<BloomLibDir>$(MSBuildThisFileDirectory)..\lib\dotnet\</BloomLibDir>
+	</PropertyGroup>
+	<ItemGroup>
+		<Reference Include="$(BloomLibDir)Bloom.dll" />
+		<Reference Include="$(BloomLibDir)SIL.Core.dll" />
+		<Reference Include="$(BloomLibDir)Newtonsoft.Json.dll" />
+		<Reference Include="$(BloomLibDir)AWSSDK.Core.dll" />
+		<Reference Include="$(BloomLibDir)AWSSDK.S3.dll" />
+		<Reference Include="$(BloomLibDir)CommandLine.dll" />
+		<Reference Include="$(BloomLibDir)RestSharp.dll" />
+
+		<Reference Include="$(BloomLibDir)System.*.dll" />
+	</ItemGroup>
+
+	<!--
+		Fail the build when a NuGet package brings its own copy of a DLL that Bloom ships. That copy
+		would overwrite Bloom's in the output folder, so Bloom.exe would run on a version it wasn't
+		built with, and nothing else reports it. Reference Bloom's copy above instead.
+	-->
+	<Target Name="CheckNoPackageReplacesBloomDlls" AfterTargets="ResolveAssemblyReferences">
+		<ItemGroup>
+			<_PackageCopyOfBloomDll Include="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll' And '%(ReferenceCopyLocalPaths.DestinationSubDirectory)' == '' And Exists('$(BloomLibDir)%(Filename)%(Extension)') And '%(RootDir)%(Directory)' != '$([System.IO.Path]::GetFullPath($(BloomLibDir)))'" />
+		</ItemGroup>
+		<Error Condition="'@(_PackageCopyOfBloomDll)' != ''" Text="A NuGet package brings its own copy of %(_PackageCopyOfBloomDll.Filename)%(_PackageCopyOfBloomDll.Extension), which Bloom ships in lib/dotnet (%(_PackageCopyOfBloomDll.FullPath)). It would replace Bloom's copy in the output folder. Reference Bloom's copy in src/Directory.Build.props instead." />
+	</Target>
+</Project>

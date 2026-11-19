@@ -85,6 +85,11 @@ jobs:
               uses: EnricoMi/publish-unit-test-result-action/windows@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
               with:
                   check_name: Test results
+                  # The job may not write to pull requests (see permissions above), so a run on
+                  # a PR branch would fail trying to post a results comment there. The check run
+                  # and job summary carry the results. Same settings as BloomDesktop's workflows.
+                  comment_mode: "off"
+                  action_fail_on_inconclusive: true
                   files: TestResults/*.trx
 
             # ----- Deployable bundle -----
